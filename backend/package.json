@@ -5,7 +5,7 @@
   "license": "MIT",
   "private": true,
   "engines": {
-    "node": ">=22.12"
+    "node": "22.x"
   },
   "scripts": {
     "build": "prisma generate && nest build",
@@ -23,7 +23,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"{src,test,prisma}/**/*.ts\"",
     "format": "prettier --write \"{src,test,prisma}/**/*.ts\"",
-    "test:cov": "vitest run --coverage"
+    "test:cov": "vitest run --coverage",
+    "start:deploy": "prisma migrate deploy && node dist/main.js"
   },
   "overrides": {
     "deepmerge-ts": "^8.0.2",

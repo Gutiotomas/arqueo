@@ -13,14 +13,16 @@ services:
     plan: free
     region: frankfurt
     rootDir: backend
-    buildCommand: npm ci && npm run build
+    # --include=dev es imprescindible: con NODE_ENV=production, npm se salta
+    # las devDependencies, y ahi viven el compilador de Nest y TypeScript.
+    buildCommand: npm ci --include=dev && npm run build
     # Las migraciones pendientes se aplican al arrancar: el plan gratuito no
     # tiene "pre-deploy command".
-    startCommand: npx prisma migrate deploy && node dist/main.js
+    startCommand: npm run start:deploy
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_VERSION
-        value: 22.12.0
+        value: '22'
       - key: NODE_ENV
         value: production
       # Pegar aqui el POSTGRESQL_ADDON_URI del addon de Clever Cloud.

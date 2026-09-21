@@ -227,9 +227,28 @@ verdad, un plan de pago o un `pg_dump` programado.
 
 ### 2. API (Render)
 
-Con el `render.yaml` de la raíz: **New → Blueprint**, apuntando al repositorio.
-Luego rellena `DATABASE_URL` y `CORS_ORIGIN` en el panel. Las migraciones se
-aplican solas en cada arranque.
+Dos caminos. El rápido es **New → Blueprint** apuntando al repositorio: el
+`render.yaml` de la raíz lo configura todo y solo quedan por rellenar
+`DATABASE_URL` y `CORS_ORIGIN`.
+
+Si prefieres crear el servicio a mano (**New → Web Service**), estos son los
+valores:
+
+| Campo | Valor |
+|---|---|
+| Root Directory | `backend` |
+| Build Command | `npm ci --include=dev && npm run build` |
+| Start Command | `npm run start:deploy` |
+| Health Check Path | `/api/v1/health` |
+
+Y en *Environment*: `NODE_VERSION=22`, `NODE_ENV=production`, `DATABASE_URL`,
+`JWT_SECRET` (largo y aleatorio), `JWT_EXPIRES_IN=12h` y `CORS_ORIGIN`.
+
+**El `--include=dev` del build no es opcional.** Con `NODE_ENV=production`, npm
+se salta las devDependencies, y ahí viven el compilador de Nest y TypeScript: sin
+esa opción el build falla con `nest: not found`. Las migraciones se aplican solas
+en cada arranque (`start:deploy`), porque el plan gratuito no tiene *pre-deploy
+command*.
 
 En el plan gratuito el servicio se duerme tras 15 minutos sin uso y tarda cerca de
 un minuto en despertar. El plan Starter lo evita.
