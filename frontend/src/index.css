@@ -1,0 +1,65 @@
+@import 'tailwindcss';
+
+/*
+ * Tokens de Arqueo. Los colores de las graficas salen de una paleta validada
+ * para daltonismo y contraste, con su version propia para modo oscuro.
+ */
+@theme {
+  --color-marca-50: #eef6fd;
+  --color-marca-100: #d6e9fa;
+  --color-marca-200: #b0d3f5;
+  --color-marca-300: #7bb6ed;
+  --color-marca-400: #4593e3;
+  --color-marca-500: #2a78d6;
+  --color-marca-600: #1e6091;
+  --color-marca-700: #1a4f77;
+  --color-marca-800: #173f5f;
+  --color-marca-900: #0f2a41;
+
+  /* Barra lateral oscura */
+  --color-panel-800: #16202e;
+  --color-panel-900: #0f172a;
+  --color-panel-950: #0a1120;
+
+  /* Series de datos (paleta validada) */
+  --color-serie-ventas: #1baf7a;
+  --color-serie-gastos: #eb6834;
+  --color-serie-1: #2a78d6;
+  --color-serie-2: #eb6834;
+  --color-serie-3: #1baf7a;
+  --color-serie-otros: #94a3b8;
+
+  /* Estados */
+  --color-exito: #15803d;
+  --color-alerta: #b45309;
+  --color-peligro: #b91c1c;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+    font-family:
+      ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+      'Helvetica Neue', Arial, sans-serif;
+  }
+
+  /* Los importes se leen mejor con cifras de ancho fijo. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* El scroll de las tablas largas, discreto. */
+@layer utilities {
+  .scrollbar-fino::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+  .scrollbar-fino::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-slate-300;
+  }
+}

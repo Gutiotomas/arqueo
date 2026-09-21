@@ -1,0 +1,14 @@
+{
+  // El cliente que genera Prisma 7 importa con extension .js, algo que ts-node
+  // no sabe resolver a .ts. Por eso el seed se compila antes de ejecutarse.
+  // tsc arrastra al build los ficheros importados (el cliente generado).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist/seed",
+    "incremental": false,
+    "sourceMap": false
+  },
+  "include": ["prisma/seed.ts"],
+  "exclude": ["node_modules", "dist"]
+}

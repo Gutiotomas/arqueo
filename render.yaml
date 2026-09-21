@@ -1,0 +1,39 @@
+# Despliegue del API en Render (Blueprint).
+#
+# Frankfurt porque la base de datos de Clever Cloud esta en Europa: cuanto mas
+# cerca, menos latencia en cada consulta.
+#
+# Ojo con el plan gratuito: el servicio se duerme tras 15 minutos sin trafico y
+# la siguiente peticion tarda cerca de un minuto en despertarlo. Para un negocio
+# que lo usa a diario, el plan Starter evita ese primer minuto de espera.
+services:
+  - type: web
+    name: arqueo-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    # Las migraciones pendientes se aplican al arrancar: el plan gratuito no
+    # tiene "pre-deploy command".
+    startCommand: npx prisma migrate deploy && node dist/main.js
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: NODE_ENV
+        value: production
+      # Pegar aqui el POSTGRESQL_ADDON_URI del addon de Clever Cloud.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      # Media jornada: la primera visita del dia pasa por el login, que es
+      # donde se avisa de que el servicio esta despertando.
+      - key: JWT_EXPIRES_IN
+        value: 12h
+      # La URL del frontend en Vercel, separada por comas si hay varias.
+      - key: CORS_ORIGIN
+        sync: false
+      - key: SEED_DEMO
+        value: 'false'

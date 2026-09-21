@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Prisma generated client (se regenera con `npm run prisma:generate`)
+backend/src/generated/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Tests
+coverage/
+
+# Vite
+.vite/
+
+# TypeScript incremental
+*.tsbuildinfo

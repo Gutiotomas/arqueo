@@ -1,0 +1,458 @@
+// Esquema de Arqueo.
+//
+// Regla de oro (multi-empresa): toda tabla de dominio lleva `businessId` y
+// toda consulta lo filtra. Los indices unicos van compuestos con businessId,
+// para que dos empresas puedan usar el mismo SKU o el mismo nombre de
+// categoria sin pisarse.
+//
+// Dinero: Decimal(14,2) — el peso colombiano maneja cifras grandes.
+// Cantidades: Decimal(12,3) — permite vender por kg o litros.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --------------------------------------------------------------------------
+// Empresa y usuarios
+// --------------------------------------------------------------------------
+
+model Business {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  currency  String   @default("COP")
+  timezone  String   @default("America/Bogota")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users             User[]
+  productCategories ProductCategory[]
+  products          Product[]
+  stockMovements    StockMovement[]
+  sales             Sale[]
+  expenseCategories ExpenseCategory[]
+  expenses          Expense[]
+  cashClosings      CashClosing[]
+  stockLosses       StockLoss[]
+  suppliers         Supplier[]
+  purchases         Purchase[]
+  purchasePayments  PurchasePayment[]
+
+  @@map("businesses")
+}
+
+enum UserRole {
+  OWNER
+  // Cuando lleguen los permisos se anaden aqui (ADMIN, CASHIER, VIEWER...)
+  // y se activa un RolesGuard. El modelo ya esta preparado.
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  businessId   String   @map("business_id") @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  role         UserRole @default(OWNER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  business         Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  stockMovements   StockMovement[]
+  sales            Sale[]
+  expenses         Expense[]
+  cashClosings     CashClosing[]
+  stockLosses      StockLoss[]
+  purchases        Purchase[]
+  purchasePayments PurchasePayment[]
+
+  @@index([businessId])
+  @@map("users")
+}
+
+// --------------------------------------------------------------------------
+// Inventario
+// --------------------------------------------------------------------------
+
+model ProductCategory {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @map("business_id") @db.Uuid
+  name       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@unique([businessId, name])
+  @@index([businessId])
+  @@map("product_categories")
+}
+
+model Product {
+  id         String  @id @default(uuid()) @db.Uuid
+  businessId String  @map("business_id") @db.Uuid
+  categoryId String? @map("category_id") @db.Uuid
+
+  name String
+  sku  String?
+  unit String  @default("ud")
+
+  /// Costo promedio ponderado: cada entrada de mercancia lo recalcula
+  /// mezclando lo que ya habia con lo que entra. Es lo que valora el
+  /// inventario y lo que se usa para el margen real.
+  costPrice Decimal @default(0) @map("cost_price") @db.Decimal(14, 2)
+  salePrice Decimal @default(0) @map("sale_price") @db.Decimal(14, 2)
+
+  /// Caché del stock actual. La verdad esta en StockMovement: este campo solo
+  /// se escribe dentro de la misma transaccion que crea el movimiento.
+  stock    Decimal @default(0) @db.Decimal(12, 3)
+  minStock Decimal @default(0) @map("min_stock") @db.Decimal(12, 3)
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business      Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category      ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  movements     StockMovement[]
+  saleItems     SaleItem[]
+  purchaseItems PurchaseItem[]
+  losses        StockLoss[]
+
+  @@unique([businessId, sku])
+  @@index([businessId])
+  @@index([businessId, isActive])
+  @@index([categoryId])
+  @@map("products")
+}
+
+enum StockMovementType {
+  IN // entrada de mercancia
+  OUT // salida por venta
+  ADJUSTMENT // correccion de inventario
+  LOSS // salida por dano, vencimiento o robo
+  REPLACEMENT // entrada porque el proveedor repuso lo danado
+}
+
+model StockMovement {
+  id             String            @id @default(uuid()) @db.Uuid
+  businessId     String            @map("business_id") @db.Uuid
+  productId      String            @map("product_id") @db.Uuid
+  userId         String?           @map("user_id") @db.Uuid
+  type           StockMovementType
+  /// Con signo: positivo suma stock, negativo lo resta.
+  delta          Decimal           @db.Decimal(12, 3)
+  /// Stock del producto despues de aplicar este movimiento (para auditoria).
+  stockAfter     Decimal           @map("stock_after") @db.Decimal(12, 3)
+  reason         String?
+  /// Si el movimiento viene de una venta, apunta a la linea que lo genero.
+  saleItemId     String?           @unique @map("sale_item_id") @db.Uuid
+  /// Si viene de una compra al proveedor, a la linea de esa compra.
+  purchaseItemId String?           @unique @map("purchase_item_id") @db.Uuid
+  /// Si viene de mercancia danada: la salida por merma o la reposicion.
+  stockLossId    String?           @map("stock_loss_id") @db.Uuid
+  createdAt      DateTime          @default(now())
+
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  product      Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  saleItem     SaleItem?     @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
+  purchaseItem PurchaseItem? @relation(fields: [purchaseItemId], references: [id], onDelete: Cascade)
+  stockLoss    StockLoss?    @relation(fields: [stockLossId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, createdAt])
+  @@index([productId, createdAt])
+  @@map("stock_movements")
+}
+
+// --------------------------------------------------------------------------
+// Ventas
+// --------------------------------------------------------------------------
+
+enum PaymentMethod {
+  CASH // efectivo
+  CARD // tarjeta
+  TRANSFER // transferencia / Nequi / Daviplata
+  OTHER
+}
+
+model Sale {
+  id            String        @id @default(uuid()) @db.Uuid
+  businessId    String        @map("business_id") @db.Uuid
+  userId        String?       @map("user_id") @db.Uuid
+  /// Fecha de negocio, sin hora: la venta pertenece a un dia.
+  date          DateTime      @db.Date
+  paymentMethod PaymentMethod @map("payment_method")
+  /// Suma de los subtotales de las lineas. Siempre se calcula en el servidor.
+  total         Decimal       @db.Decimal(14, 2)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  business Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items    SaleItem[]
+
+  @@index([businessId, date])
+  @@index([businessId, paymentMethod])
+  @@map("sales")
+}
+
+model SaleItem {
+  id        String  @id @default(uuid()) @db.Uuid
+  saleId    String  @map("sale_id") @db.Uuid
+  /// Nulo cuando la linea es un concepto libre (un servicio, algo sin catalogar).
+  productId String? @map("product_id") @db.Uuid
+
+  description String
+  quantity    Decimal @db.Decimal(12, 3)
+  unitPrice   Decimal @map("unit_price") @db.Decimal(14, 2)
+  /// Coste unitario en el momento de la venta, para calcular margen historico.
+  unitCost    Decimal @default(0) @map("unit_cost") @db.Decimal(14, 2)
+  subtotal    Decimal @db.Decimal(14, 2)
+
+  sale     Sale           @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product  Product?       @relation(fields: [productId], references: [id], onDelete: SetNull)
+  movement StockMovement?
+
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_items")
+}
+
+// --------------------------------------------------------------------------
+// Gastos
+// --------------------------------------------------------------------------
+
+model ExpenseCategory {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @map("business_id") @db.Uuid
+  name       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@unique([businessId, name])
+  @@index([businessId])
+  @@map("expense_categories")
+}
+
+model Expense {
+  id            String        @id @default(uuid()) @db.Uuid
+  businessId    String        @map("business_id") @db.Uuid
+  categoryId    String?       @map("category_id") @db.Uuid
+  userId        String?       @map("user_id") @db.Uuid
+  date          DateTime      @db.Date
+  description   String
+  amount        Decimal       @db.Decimal(14, 2)
+  paymentMethod PaymentMethod @map("payment_method")
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  business Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category ExpenseCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  user     User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, date])
+  @@index([categoryId])
+  @@map("expenses")
+}
+
+// --------------------------------------------------------------------------
+// Cierre de caja
+// --------------------------------------------------------------------------
+
+model CashClosing {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @map("business_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  date       DateTime @db.Date
+
+  /// Efectivo con el que se abrio el dia.
+  openingCash  Decimal @map("opening_cash") @db.Decimal(14, 2)
+  /// Efectivo contado al cerrar.
+  closingCash  Decimal @map("closing_cash") @db.Decimal(14, 2)
+  /// openingCash + ventas en efectivo - gastos en efectivo.
+  expectedCash Decimal @map("expected_cash") @db.Decimal(14, 2)
+  /// closingCash - expectedCash. Negativo = falta dinero en caja.
+  difference   Decimal @db.Decimal(14, 2)
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([businessId, date])
+  @@index([businessId, date])
+  @@map("cash_closings")
+}
+
+// --------------------------------------------------------------------------
+// Compras a proveedor
+//
+// Comprar mercancia NO es un gasto: es cambiar dinero (o deuda) por inventario.
+// El gasto aparece cuando esa mercancia se vende, como costo de lo vendido.
+// Por eso las compras viven aparte de Expense, que son los gastos de operar
+// el negocio (arriendo, servicios, nomina...).
+// --------------------------------------------------------------------------
+
+model Supplier {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @map("business_id") @db.Uuid
+  name       String
+  phone      String?
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business  Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  purchases Purchase[]
+  losses    StockLoss[]
+
+  @@unique([businessId, name])
+  @@index([businessId])
+  @@map("suppliers")
+}
+
+model Purchase {
+  id         String  @id @default(uuid()) @db.Uuid
+  businessId String  @map("business_id") @db.Uuid
+  supplierId String? @map("supplier_id") @db.Uuid
+  userId     String? @map("user_id") @db.Uuid
+
+  date          DateTime  @db.Date
+  /// Numero de factura o remision del proveedor.
+  invoiceNumber String?   @map("invoice_number")
+  total         Decimal   @db.Decimal(14, 2)
+  /// Suma de los abonos. Se actualiza en la misma transaccion que el abono.
+  paidAmount    Decimal   @default(0) @map("paid_amount") @db.Decimal(14, 2)
+  /// Cuando hay que terminar de pagarla, si el proveedor dio plazo.
+  dueDate       DateTime? @map("due_date") @db.Date
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  supplier Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  user     User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items    PurchaseItem[]
+  payments PurchasePayment[]
+
+  @@index([businessId, date])
+  @@index([supplierId])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id         String @id @default(uuid()) @db.Uuid
+  purchaseId String @map("purchase_id") @db.Uuid
+  productId  String @map("product_id") @db.Uuid
+
+  quantity Decimal @db.Decimal(12, 3)
+  unitCost Decimal @map("unit_cost") @db.Decimal(14, 2)
+  subtotal Decimal @db.Decimal(14, 2)
+
+  purchase Purchase       @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  movement StockMovement?
+
+  @@index([purchaseId])
+  @@index([productId])
+  @@map("purchase_items")
+}
+
+model PurchasePayment {
+  id            String        @id @default(uuid()) @db.Uuid
+  businessId    String        @map("business_id") @db.Uuid
+  purchaseId    String        @map("purchase_id") @db.Uuid
+  userId        String?       @map("user_id") @db.Uuid
+  date          DateTime      @db.Date
+  amount        Decimal       @db.Decimal(14, 2)
+  paymentMethod PaymentMethod @map("payment_method")
+  notes         String?
+  createdAt     DateTime      @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, date])
+  @@index([purchaseId])
+  @@map("purchase_payments")
+}
+
+// --------------------------------------------------------------------------
+// Mercancia danada, vencida o perdida
+//
+// Lo que se pierde NO es el precio de venta: es lo que te costo a ti. Y
+// depende de lo que haga el proveedor:
+//
+//   - La repone gratis        -> no pierdes nada, solo cambias unas unidades
+//     por otras.
+//   - La repone cobrando algo -> pierdes lo que te toco pagar de mas.
+//   - No la repone            -> pierdes el costo entero de la mercancia.
+// --------------------------------------------------------------------------
+
+enum LossReason {
+  DAMAGED // se dano o se rompio
+  EXPIRED // se vencio
+  THEFT // robo o faltante
+  OTHER
+}
+
+enum LossResolution {
+  PENDING // aun no sabes que va a hacer el proveedor
+  FREE // la repuso sin cobrar
+  DISCOUNTED // la repuso cobrando menos de lo que vale
+  NONE // no la repone: perdida total
+}
+
+model StockLoss {
+  id         String  @id @default(uuid()) @db.Uuid
+  businessId String  @map("business_id") @db.Uuid
+  productId  String  @map("product_id") @db.Uuid
+  /// A quien se le reclamo, si se reclamo.
+  supplierId String? @map("supplier_id") @db.Uuid
+  userId     String? @map("user_id") @db.Uuid
+
+  date     DateTime @db.Date
+  quantity Decimal  @db.Decimal(12, 3)
+  /// Costo que tenia la mercancia el dia que se dano (foto fija).
+  unitCost Decimal  @map("unit_cost") @db.Decimal(14, 2)
+
+  reason     LossReason
+  resolution LossResolution @default(PENDING)
+  /// Lo que cobra el proveedor por unidad repuesta (0 si la repone gratis).
+  replacementUnitCost Decimal @default(0) @map("replacement_unit_cost") @db.Decimal(14, 2)
+  /// Como se pago esa reposicion, si hubo que pagarla.
+  paymentMethod       PaymentMethod? @map("payment_method")
+  /// Dinero que el negocio pierde de verdad con este caso.
+  lossAmount          Decimal        @map("loss_amount") @db.Decimal(14, 2)
+  /// Cuando el proveedor dio respuesta.
+  resolvedAt          DateTime?      @map("resolved_at") @db.Date
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business  Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier  Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  user      User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  movements StockMovement[]
+
+  @@index([businessId, date])
+  @@index([productId])
+  @@map("stock_losses")
+}
