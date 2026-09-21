@@ -162,7 +162,9 @@ export function PaymentMethodDonut({
   const total = porciones.reduce((suma, porcion) => suma + porcion.valor, 0);
 
   return (
-    <div>
+    // La leyenda se decide por el ancho de la tarjeta, no de la pantalla: con
+    // el menú lateral, una pantalla ancha puede dejar la tarjeta estrecha.
+    <div className="@container">
       <div className="relative">
         <ResponsiveContainer width="100%" height={230}>
           <PieChart>
@@ -203,7 +205,7 @@ export function PaymentMethodDonut({
       </div>
 
       {/* La leyenda lleva los valores: el color nunca es la única pista. */}
-      <ul className="mt-3 grid gap-x-4 gap-y-2 sm:grid-cols-2">
+      <ul className="mt-3 grid gap-x-4 gap-y-2 @md:grid-cols-2">
         {porciones.map((porcion, indice) => (
           <li
             key={porcion.nombre}

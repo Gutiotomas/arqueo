@@ -256,7 +256,7 @@ export function DashboardPage() {
           </Card>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 xl:grid-cols-2">
           <Card>
             <CardHeader
               title="Lo que más se vende"
@@ -375,7 +375,6 @@ export function DashboardPage() {
                     <thead>
                       <tr>
                         <Th>Producto</Th>
-                        <Th>Categoría</Th>
                         <Th align="right">Stock</Th>
                         <Th align="right">Mínimo</Th>
                         <Th align="right">Estado</Th>
@@ -386,9 +385,11 @@ export function DashboardPage() {
                         <Tr key={producto.id}>
                           <Td className="font-medium text-slate-900">
                             {producto.name}
-                          </Td>
-                          <Td className="text-slate-500">
-                            {producto.category?.name ?? '—'}
+                            {producto.category && (
+                              <span className="block text-xs font-normal text-slate-500">
+                                {producto.category.name}
+                              </span>
+                            )}
                           </Td>
                           <Td align="right">
                             {formatQuantity(producto.stock)} {producto.unit}
@@ -454,13 +455,31 @@ function KpiCard({
     <Card
       className={cn('h-full', enlace && 'transition-shadow hover:shadow-md')}
     >
-      <CardBody className="flex items-start justify-between gap-3">
+      <CardBody>
+        {/*
+          El icono va en la fila del título y no al lado del importe: con cuatro
+          tarjetas en un portátil, el importe necesita todo el ancho para no
+          cortarse.
+        */}
+        <div className="flex items-start justify-between gap-3">
+          <p className="pt-1 text-sm font-medium text-slate-500">{titulo}</p>
+          <span
+            className={cn(
+              'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
+              TONOS[tono],
+            )}
+          >
+            {icono}
+          </span>
+        </div>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-500">{titulo}</p>
           {cargando ? (
             <div className="mt-2 h-8 w-28 animate-pulse rounded bg-slate-100" />
           ) : (
-            <p className="tabular mt-1 truncate text-2xl font-bold text-slate-900">
+            <p
+              className="tabular mt-1 truncate text-2xl font-bold text-slate-900"
+              title={valor}
+            >
               {valor}
             </p>
           )}
@@ -484,14 +503,6 @@ function KpiCard({
             )}
           </div>
         </div>
-        <span
-          className={cn(
-            'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
-            TONOS[tono],
-          )}
-        >
-          {icono}
-        </span>
       </CardBody>
     </Card>
   );

@@ -62,4 +62,16 @@
   .scrollbar-fino::-webkit-scrollbar-thumb {
     @apply rounded-full bg-slate-300;
   }
+
+  /* La misma idea sobre el fondo oscuro del menú lateral. */
+  .scrollbar-oscuro {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 0.15) transparent;
+  }
+  .scrollbar-oscuro::-webkit-scrollbar {
+    width: 6px;
+  }
+  .scrollbar-oscuro::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-white/15;
+  }
 }
