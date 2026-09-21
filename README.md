@@ -113,7 +113,7 @@ npm run build           # genera el cliente de Prisma y compila
 npm test                # pruebas unitarias
 npm run test:e2e        # pruebas end to end (necesitan la BD levantada)
 npm run typecheck       # comprobación de tipos
-npm run prisma:migrate  # nueva migración en desarrollo
+npm run prisma:migrate  # nueva migración en desarrollo (única forma de crearlas)
 npm run prisma:deploy   # aplica migraciones (producción)
 npm run prisma:studio   # explorador de la base de datos
 
@@ -196,6 +196,13 @@ servidor se durmió), la aplicación no deja un spinner mudo: a los 2,5 segundos
 aparece **"Despertando el servidor"** con el motivo y los segundos que llevas.
 Si prefieres que dure un día entero, es cambiar esa variable; si prefieres que
 no haya espera, es el plan Starter de Render.
+
+**Las migraciones se crean solo con `npm run prisma:migrate`.** Prisma las
+aplica por orden alfabético del nombre, que empieza por la fecha en UTC. Una
+carpeta creada a mano con la hora local (Colombia va 5 horas por detrás) queda
+ordenada antes de lo que debe: en tu máquina no se nota, pero una base nueva
+falla al desplegar. Ya pasó una vez, y por eso `prisma/migrations.spec.ts`
+comprueba que ninguna migración modifique una tabla que aún no exista.
 
 **El stock es un libro de movimientos.** `StockMovement` es la verdad;
 `Product.stock` es una caché que se actualiza dentro de la misma transacción. La
