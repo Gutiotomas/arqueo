@@ -39,6 +39,7 @@ function useInvalidarVentas() {
     cliente.invalidateQueries({ queryKey: ['dashboard'] });
     cliente.invalidateQueries({ queryKey: ['products'] });
     cliente.invalidateQueries({ queryKey: ['cash'] });
+    cliente.invalidateQueries({ queryKey: ['account'] });
   };
 }
 

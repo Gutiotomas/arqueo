@@ -130,6 +130,9 @@ export class PdfRenderer {
               ]
             : []),
           ['Gastos de operar', `- ${dinero(data.kpis.expenses)}`],
+          ...(Number(data.kpis.cardFees) > 0
+            ? [['Comisiones del datáfono', `- ${dinero(data.kpis.cardFees)}`]]
+            : []),
           ['UTILIDAD NETA', dinero(data.kpis.profit)],
         ],
         '',

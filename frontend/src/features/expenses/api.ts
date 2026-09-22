@@ -52,6 +52,7 @@ function useInvalidarGastos() {
     cliente.invalidateQueries({ queryKey: ['dashboard'] });
     cliente.invalidateQueries({ queryKey: ['expense-categories'] });
     cliente.invalidateQueries({ queryKey: ['cash'] });
+    cliente.invalidateQueries({ queryKey: ['account'] });
   };
 }
 

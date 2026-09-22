@@ -18,6 +18,7 @@ import {
   type PurchaseFilters,
   type PurchaseStatusFilter,
 } from './api';
+import { OpeningBalanceDialog } from './OpeningBalanceDialog';
 import { PaymentDialog } from './PaymentDialog';
 import { PurchaseFormDialog } from './PurchaseFormDialog';
 import { PageHeader } from '@/app/AppLayout';
@@ -95,31 +96,38 @@ function DetalleCompra({
 
   return (
     <div className="space-y-3 rounded-lg bg-slate-50 p-3">
-      <div>
-        <p className="mb-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase">
-          Mercancía que entró al inventario
+      {compra.isOpeningBalance ? (
+        <p className="text-sm text-slate-600">
+          Deuda de antes de usar Arqueo, por mercancía que ya no está. No movió el
+          inventario.
         </p>
-        <ul className="space-y-1.5">
-          {compra.items.map((item) => (
-            <li key={item.id} className="flex justify-between gap-3 text-sm">
-              <span className="min-w-0">
-                <span className="text-slate-700">
-                  <span className="tabular text-slate-500">
-                    {formatQuantity(item.quantity)} {item.product.unit} ×
-                  </span>{' '}
-                  {item.product.name}
+      ) : (
+        <div>
+          <p className="mb-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            Mercancía que entró al inventario
+          </p>
+          <ul className="space-y-1.5">
+            {compra.items.map((item) => (
+              <li key={item.id} className="flex justify-between gap-3 text-sm">
+                <span className="min-w-0">
+                  <span className="text-slate-700">
+                    <span className="tabular text-slate-500">
+                      {formatQuantity(item.quantity)} {item.product.unit} ×
+                    </span>{' '}
+                    {item.product.name}
+                  </span>
+                  <span className="block text-xs text-slate-400">
+                    {formatMoney(item.unitCost, currency)} por {item.product.unit}
+                  </span>
                 </span>
-                <span className="block text-xs text-slate-400">
-                  {formatMoney(item.unitCost, currency)} por {item.product.unit}
+                <span className="tabular shrink-0 font-medium text-slate-900">
+                  {formatMoney(item.subtotal, currency)}
                 </span>
-              </span>
-              <span className="tabular shrink-0 font-medium text-slate-900">
-                {formatMoney(item.subtotal, currency)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div>
         <p className="mb-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase">
@@ -127,7 +135,8 @@ function DetalleCompra({
         </p>
         {compra.payments.length === 0 ? (
           <p className="text-sm text-slate-500">
-            Todavía no has abonado nada de esta compra.
+            Todavía no has abonado nada de esta{' '}
+            {compra.isOpeningBalance ? 'deuda' : 'compra'}.
           </p>
         ) : (
           <ul className="space-y-1">
@@ -183,6 +192,7 @@ export function PurchasesPage() {
   const { currency } = useAuth();
   const [filtros, setFiltros] = useState<PurchaseFilters>(filtrosIniciales);
   const [formularioAbierto, setFormularioAbierto] = useState(false);
+  const [deudaAnteriorAbierta, setDeudaAnteriorAbierta] = useState(false);
   const [aAbonar, setAAbonar] = useState<Purchase | null>(null);
   const [detalleId, setDetalleId] = useState<string | null>(null);
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
@@ -267,7 +277,7 @@ export function PurchasesPage() {
         <Button
           variant="dangerGhost"
           size="icon"
-          aria-label="Borrar compra"
+          aria-label={compra.isOpeningBalance ? 'Borrar deuda anterior' : 'Borrar compra'}
           onClick={() => setABorrar({ tipo: 'compra', compra })}
         >
           <Trash2 className="h-4 w-4" />
@@ -279,6 +289,7 @@ export function PurchasesPage() {
   function estados(compra: Purchase) {
     return (
       <>
+        {compra.isOpeningBalance && <Badge tone="info">Deuda anterior</Badge>}
         <Badge tone={TONO_ESTADO[compra.status]}>{ETIQUETA_ESTADO[compra.status]}</Badge>
         {estaVencida(compra) && <Badge tone="danger">Vencida</Badge>}
       </>
@@ -313,6 +324,16 @@ export function PurchasesPage() {
               icon={<CheckCircle2 className="h-9 w-9 text-emerald-500" />}
               title="Estás al día con tus proveedores"
               message="No debes nada. Cuando dejes una compra a deber, el saldo aparecerá aquí."
+              action={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setDeudaAnteriorAbierta(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                  Apuntar una deuda anterior
+                </Button>
+              }
             />
           ) : (
             <>
@@ -359,6 +380,18 @@ export function PurchasesPage() {
                   </li>
                 ))}
               </ul>
+
+              {/* Para lo que ya se debía antes de empezar a usar Arqueo. */}
+              <div className="border-t border-slate-100 px-2 py-1.5 sm:px-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDeudaAnteriorAbierta(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                  Apuntar una deuda anterior
+                </Button>
+              </div>
             </>
           )}
         </Card>
@@ -442,7 +475,7 @@ export function PurchasesPage() {
             <>
               <div className="grid gap-1.5 border-b border-slate-100 px-4 py-3 sm:grid-cols-3">
                 {[
-                  { label: 'Comprado', valor: compras.data.summary?.total },
+                  { label: 'Total', valor: compras.data.summary?.total },
                   { label: 'Abonado', valor: compras.data.summary?.paid },
                   { label: 'Saldo', valor: compras.data.summary?.balance },
                 ].map((dato) => (
@@ -602,6 +635,11 @@ export function PurchasesPage() {
         onOpenChange={setFormularioAbierto}
       />
 
+      <OpeningBalanceDialog
+        open={deudaAnteriorAbierta}
+        onOpenChange={setDeudaAnteriorAbierta}
+      />
+
       <PaymentDialog
         open={!!aAbonar}
         compra={aAbonar}
@@ -611,11 +649,19 @@ export function PurchasesPage() {
       <ConfirmDialog
         open={!!aBorrar}
         onOpenChange={(abierto) => !abierto && setABorrar(null)}
-        title={aBorrar?.tipo === 'abono' ? 'Borrar este abono' : 'Borrar esta compra'}
+        title={
+          aBorrar?.tipo === 'abono'
+            ? 'Borrar este abono'
+            : aBorrar?.compra.isOpeningBalance
+              ? 'Borrar esta deuda anterior'
+              : 'Borrar esta compra'
+        }
         message={
           aBorrar?.tipo === 'abono'
             ? 'El importe volverá a quedar como deuda con el proveedor. Si lo pagaste en efectivo, también cambiará el cierre de caja de ese día.'
-            : 'Se retirará del inventario la mercancía que entró y se borrarán sus abonos. Solo se puede si todavía no has vendido nada de esa compra.'
+            : aBorrar?.compra.isOpeningBalance
+              ? 'Se borrará la deuda y sus abonos. Si algún abono fue en efectivo, también cambiará el cierre de caja de ese día.'
+              : 'Se retirará del inventario la mercancía que entró, el costo de esos productos volverá a como estaba antes de la compra y se borrarán sus abonos. Solo se puede si todavía no has vendido nada de esa compra.'
         }
         loading={borrarCompra.isPending || borrarAbono.isPending}
         onConfirm={confirmarBorrado}

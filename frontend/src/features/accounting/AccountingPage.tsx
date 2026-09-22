@@ -279,6 +279,14 @@ function EstadoDeResultados({
           valor={`− ${formatMoney(datos.operatingExpenses, currency)}`}
           tono="resta"
         />
+        {Number(datos.cardFees) > 0 && (
+          <Linea
+            titulo="Comisiones del datáfono"
+            detalle="Lo que se quedó el banco de las ventas con tarjeta"
+            valor={`− ${formatMoney(datos.cardFees, currency)}`}
+            tono="resta"
+          />
+        )}
         <Linea
           titulo="Utilidad neta"
           detalle={`${datos.netMargin}% sobre las ventas`}

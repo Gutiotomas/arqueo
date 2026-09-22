@@ -109,6 +109,7 @@ function useInvalidarPerdidas() {
     cliente.invalidateQueries({ queryKey: ['accounting'] });
     cliente.invalidateQueries({ queryKey: ['products'] });
     cliente.invalidateQueries({ queryKey: ['cash'] });
+    cliente.invalidateQueries({ queryKey: ['account'] });
   };
 }
 

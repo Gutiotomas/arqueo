@@ -76,6 +76,7 @@ export function SettingsPage() {
               nombreInicial={negocio.data?.name ?? ''}
               monedaInicial={negocio.data?.currency ?? 'COP'}
               zonaInicial={negocio.data?.timezone ?? 'America/Bogota'}
+              comisionInicial={Number(negocio.data?.cardFeePercent ?? 0)}
               onGuardado={refrescarUsuario}
             />
           )}
@@ -128,11 +129,13 @@ function FormularioNegocio({
   nombreInicial,
   monedaInicial,
   zonaInicial,
+  comisionInicial,
   onGuardado,
 }: {
   nombreInicial: string;
   monedaInicial: string;
   zonaInicial: string;
+  comisionInicial: number;
   onGuardado: () => Promise<void>;
 }) {
   const actualizar = useUpdateBusiness();
@@ -140,6 +143,7 @@ function FormularioNegocio({
   const [nombre, setNombre] = useState(nombreInicial);
   const [moneda, setMoneda] = useState(monedaInicial);
   const [zona, setZona] = useState(zonaInicial);
+  const [comision, setComision] = useState<number | ''>(comisionInicial);
   const [error, setError] = useState<string | null>(null);
   const [guardado, setGuardado] = useState(false);
 
@@ -148,7 +152,8 @@ function FormularioNegocio({
     setNombre(nombreInicial);
     setMoneda(monedaInicial);
     setZona(zonaInicial);
-  }, [nombreInicial, monedaInicial, zonaInicial]);
+    setComision(comisionInicial);
+  }, [nombreInicial, monedaInicial, zonaInicial, comisionInicial]);
 
   async function enviar(evento: FormEvent) {
     evento.preventDefault();
@@ -159,12 +164,17 @@ function FormularioNegocio({
       setError('El negocio necesita un nombre');
       return;
     }
+    if (Number(comision || 0) < 0 || Number(comision || 0) > 30) {
+      setError('La comisión del datáfono tiene que estar entre 0 y 30 %');
+      return;
+    }
 
     try {
       await actualizar.mutateAsync({
         name: nombre.trim(),
         currency: moneda,
         timezone: zona,
+        cardFeePercent: Number(comision || 0),
       });
       // La moneda viaja dentro del usuario: sin refrescar, los importes de
       // toda la aplicacion seguirian con la anterior.
@@ -227,6 +237,30 @@ function FormularioNegocio({
             </Select>
           </Field>
         </div>
+
+        <Field
+          label="Comisión del datáfono (%)"
+          hint="Lo que te llega de menos por cada venta con tarjeta, sumando comisión, IVA y retenciones. Déjalo en 0 si no usas datáfono."
+        >
+          <div className="relative sm:max-w-48">
+            <Input
+              type="number"
+              min="0"
+              max="30"
+              step="any"
+              inputMode="decimal"
+              className="pr-8 text-right tabular"
+              value={comision}
+              onChange={(e) => {
+                setComision(e.target.value === '' ? '' : Number(e.target.value));
+                setGuardado(false);
+              }}
+            />
+            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-slate-500">
+              %
+            </span>
+          </div>
+        </Field>
 
         {error && (
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">

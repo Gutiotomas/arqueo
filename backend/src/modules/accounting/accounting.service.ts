@@ -18,6 +18,7 @@ import type { DateRange } from '../dashboard/dashboard.service';
  *   = Utilidad bruta           (el margen de verdad)
  *   − Mercancia perdida        (lo danado que el proveedor no repuso)
  *   − Gastos de operar         (arriendo, servicios, nomina...)
+ *   − Comisiones del datafono  (lo que se queda el banco de las ventas con tarjeta)
  *   = Utilidad neta            (si esto es negativo, el negocio pierde)
  */
 @Injectable()
@@ -93,7 +94,11 @@ export class AccountingService {
     };
 
     const [ventas, gastos, costo, merma] = await Promise.all([
-      this.prisma.sale.aggregate({ where, _sum: { total: true }, _count: true }),
+      this.prisma.sale.aggregate({
+        where,
+        _sum: { total: true, cardFee: true },
+        _count: true,
+      }),
       this.prisma.expense.aggregate({ where, _sum: { amount: true }, _count: true }),
       this.costoDeLoVendido(businessId, range),
       this.prisma.stockLoss.aggregate({
@@ -106,6 +111,7 @@ export class AccountingService {
     const sales = money(ventas._sum.total ?? 0);
     const operatingExpenses = money(gastos._sum.amount ?? 0);
     const losses = money(merma._sum.lossAmount ?? 0);
+    const cardFees = money(ventas._sum.cardFee ?? 0);
     const grossProfit = money(sales.minus(costo));
 
     return {
@@ -114,7 +120,10 @@ export class AccountingService {
       grossProfit,
       losses,
       operatingExpenses,
-      netProfit: money(grossProfit.minus(losses).minus(operatingExpenses)),
+      cardFees,
+      netProfit: money(
+        grossProfit.minus(losses).minus(operatingExpenses).minus(cardFees),
+      ),
       salesCount: ventas._count,
       expensesCount: gastos._count,
       lossesCount: merma._count,
@@ -172,6 +181,8 @@ export class AccountingService {
     const agregado = await this.prisma.purchase.aggregate({
       where: {
         businessId,
+        // Una deuda anterior es mercancia de antes, no de este periodo.
+        isOpeningBalance: false,
         date: {
           gte: parseBusinessDate(range.from),
           lte: parseBusinessDate(range.to),
@@ -208,6 +219,8 @@ export class AccountingService {
       losses: datos.losses.toFixed(2),
       lossesCount: datos.lossesCount,
       operatingExpenses: datos.operatingExpenses.toFixed(2),
+      /** Lo que se quedo el datafono de las ventas con tarjeta. */
+      cardFees: datos.cardFees.toFixed(2),
       netProfit: datos.netProfit.toFixed(2),
       netMargin: porcentaje(datos.netProfit, datos.sales),
       salesCount: datos.salesCount,

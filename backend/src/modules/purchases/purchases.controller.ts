@@ -17,6 +17,7 @@ import {
 } from '../../common/decorators/current-user.decorator';
 import {
   CreatePurchaseDto,
+  OpeningBalanceDto,
   PurchasePaymentDto,
   PurchaseQueryDto,
   SupplierDto,
@@ -60,6 +61,18 @@ export class PurchasesController {
   })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreatePurchaseDto) {
     return this.purchases.create(user.businessId, user.userId, dto);
+  }
+
+  @Post('opening-balance')
+  @ApiOperation({
+    summary:
+      'Apunta una deuda de antes de usar Arqueo (mercancía que ya no está): no mueve el inventario',
+  })
+  createOpeningBalance(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: OpeningBalanceDto,
+  ) {
+    return this.purchases.createOpeningBalance(user.businessId, user.userId, dto);
   }
 
   @Post(':id/payments')

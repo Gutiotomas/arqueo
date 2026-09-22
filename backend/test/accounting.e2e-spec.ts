@@ -224,4 +224,144 @@ describe('Contabilidad y compras (e2e)', () => {
     ).expect(400);
     expect(respuesta.body.message).toMatch(/ya se vendió/i);
   });
+
+  /** Un producto aparte para cada prueba, sin arrastrar el stock de las demás. */
+  async function productoNuevo(nombre: string, costPrice: number, stock: number) {
+    const producto = await como(
+      http().post('/api/v1/products').send({ name: nombre, salePrice: 9000, costPrice, stock }),
+    ).expect(201);
+    return producto.body.id as string;
+  }
+
+  async function costoYStock(id: string) {
+    const producto = await como(http().get(`/api/v1/products/${id}`)).expect(200);
+    return { costo: Number(producto.body.costPrice), stock: Number(producto.body.stock) };
+  }
+
+  it('borrar una compra mal apuntada devuelve el costo que tenía el producto', async () => {
+    // Se crea con costo 2.500 y sin stock, como se recomienda antes de comprar.
+    const id = await productoNuevo(`Aceite ${sufijo}`, 2500, 0);
+
+    const compra = await como(
+      http()
+        .post('/api/v1/purchases')
+        .send({
+          date: hoy,
+          supplierName: 'Distribuidora de prueba',
+          // Error de dedo: 40.000 en vez de 4.000.
+          items: [{ productId: id, quantity: 5, unitCost: 40000 }],
+        }),
+    ).expect(201);
+    expect(await costoYStock(id)).toEqual({ costo: 40000, stock: 5 });
+
+    await como(http().delete(`/api/v1/purchases/${compra.body.id}`)).expect(200);
+    expect(await costoYStock(id)).toEqual({ costo: 2500, stock: 0 });
+  });
+
+  it('el mismo producto en dos líneas promedia bien y se deshace entero', async () => {
+    const id = await productoNuevo(`Azúcar ${sufijo}`, 1000, 10);
+
+    const compra = await como(
+      http()
+        .post('/api/v1/purchases')
+        .send({
+          date: hoy,
+          supplierName: 'Distribuidora de prueba',
+          items: [
+            { productId: id, quantity: 5, unitCost: 2000 },
+            { productId: id, quantity: 10, unitCost: 4000 },
+          ],
+        }),
+    ).expect(201);
+
+    // 10 a 1.000 + 5 a 2.000 + 10 a 4.000 = 25 a 2.400
+    expect(await costoYStock(id)).toEqual({ costo: 2400, stock: 25 });
+
+    await como(http().delete(`/api/v1/purchases/${compra.body.id}`)).expect(200);
+    expect(await costoYStock(id)).toEqual({ costo: 1000, stock: 10 });
+  });
+
+  it('si entró otra compra después, el costo queda como si la borrada no existiera', async () => {
+    const id = await productoNuevo(`Café ${sufijo}`, 1000, 10);
+    const comprar = (quantity: number, unitCost: number) =>
+      como(
+        http()
+          .post('/api/v1/purchases')
+          .send({
+            date: hoy,
+            supplierName: 'Distribuidora de prueba',
+            items: [{ productId: id, quantity, unitCost }],
+          }),
+      ).expect(201);
+
+    const primera = await comprar(10, 3000); // 20 a 2.000
+    await comprar(20, 4000); // 40 a 3.000
+
+    await como(http().delete(`/api/v1/purchases/${primera.body.id}`)).expect(200);
+    // Sin la primera: 10 a 1.000 + 20 a 4.000 = 30 a 3.000
+    expect(await costoYStock(id)).toEqual({ costo: 3000, stock: 30 });
+  });
+
+  it('una deuda anterior suma a lo que se debe sin tocar inventario ni compras del periodo', async () => {
+    const [deudaAntes, contaAntes] = await Promise.all([
+      como(http().get('/api/v1/purchases/debt')),
+      como(http().get(`/api/v1/accounting/overview?from=${hoy}&to=${hoy}`)),
+    ]);
+
+    const sinProveedor = await como(
+      http().post('/api/v1/purchases/opening-balance').send({ date: hoy, amount: 50000 }),
+    ).expect(400);
+    expect(sinProveedor.body.message).toMatch(/proveedor/i);
+
+    const deuda = await como(
+      http()
+        .post('/api/v1/purchases/opening-balance')
+        .send({ date: hoy, supplierName: 'Proveedor de antes', amount: 50000 }),
+    ).expect(201);
+
+    expect(deuda.body.isOpeningBalance).toBe(true);
+    expect(deuda.body.items).toEqual([]);
+    expect(deuda.body.balance).toBe('50000.00');
+    expect(deuda.body.status).toBe('pending');
+
+    const [deudaDespues, contaDespues] = await Promise.all([
+      como(http().get('/api/v1/purchases/debt')),
+      como(http().get(`/api/v1/accounting/overview?from=${hoy}&to=${hoy}`)),
+    ]);
+
+    expect(Number(deudaDespues.body.total)).toBe(Number(deudaAntes.body.total) + 50000);
+    expect(Number(contaDespues.body.supplierDebt)).toBe(
+      Number(contaAntes.body.supplierDebt) + 50000,
+    );
+    // Ni es mercancía comprada hoy ni cambia lo que hay en la estantería.
+    expect(contaDespues.body.purchases).toBe(contaAntes.body.purchases);
+    expect(contaDespues.body.inventoryValue).toBe(contaAntes.body.inventoryValue);
+  });
+
+  it('la deuda anterior se abona como cualquier compra y el efectivo sale de la caja', async () => {
+    const cajaAntes = await como(
+      http().get(`/api/v1/cash-closings/preview?date=${hoy}&openingCash=0`),
+    );
+    const listado = await como(http().get('/api/v1/purchases?limit=50'));
+    const deuda = listado.body.data.find(
+      (fila: { isOpeningBalance: boolean }) => fila.isOpeningBalance,
+    );
+
+    const abonada = await como(
+      http()
+        .post(`/api/v1/purchases/${deuda.id}/payments`)
+        .send({ date: hoy, amount: 20000, paymentMethod: 'CASH' }),
+    ).expect(201);
+    expect(abonada.body.balance).toBe('30000.00');
+    expect(abonada.body.status).toBe('partial');
+
+    const cajaDespues = await como(
+      http().get(`/api/v1/cash-closings/preview?date=${hoy}&openingCash=0`),
+    );
+    expect(Number(cajaDespues.body.cashSupplierPayments)).toBe(
+      Number(cajaAntes.body.cashSupplierPayments) + 20000,
+    );
+
+    await como(http().delete(`/api/v1/purchases/${deuda.id}`)).expect(200);
+  });
 });

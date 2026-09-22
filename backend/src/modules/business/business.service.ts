@@ -30,6 +30,9 @@ export class BusinessService {
           ? { currency: dto.currency.toUpperCase() }
           : {}),
         ...(dto.timezone !== undefined ? { timezone: dto.timezone } : {}),
+        ...(dto.cardFeePercent !== undefined
+          ? { cardFeePercent: dto.cardFeePercent }
+          : {}),
       },
     });
   }

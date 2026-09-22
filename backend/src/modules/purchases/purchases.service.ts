@@ -7,11 +7,12 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
 import { paginated } from '../../common/dto/pagination.dto';
-import { costoPromedioPonderado } from '../../common/utils/cost';
+import { costoPromedioPonderado, costoSinLaCompra } from '../../common/utils/cost';
 import { parseBusinessDate, todayInTimezone } from '../../common/utils/dates';
 import { money, quantity, sumDecimals, toDecimal } from '../../common/utils/money';
 import {
   CreatePurchaseDto,
+  OpeningBalanceDto,
   PurchasePaymentDto,
   PurchaseQueryDto,
 } from './dto/purchase.dto';
@@ -117,6 +118,11 @@ export class PurchasesService {
       );
     }
 
+    // El costo de cada producto antes de la compra, para poder deshacerla.
+    const costoAntes = new Map(
+      [...productos.values()].map((producto) => [producto.id, producto.costPrice]),
+    );
+
     const compra = await this.prisma.$transaction(async (tx) => {
       const creada = await tx.purchase.create({
         data: {
@@ -134,7 +140,11 @@ export class PurchasesService {
 
       for (const linea of lineas) {
         const item = await tx.purchaseItem.create({
-          data: { purchaseId: creada.id, ...linea },
+          data: {
+            purchaseId: creada.id,
+            ...linea,
+            previousCostPrice: costoAntes.get(linea.productId)!,
+          },
         });
 
         const producto = productos.get(linea.productId)!;
@@ -152,6 +162,8 @@ export class PurchasesService {
             costPrice: nuevoCosto,
           },
         });
+        // Si el mismo producto viene en otra linea, promedia sobre esta.
+        productos.set(linea.productId, actualizado);
 
         await tx.stockMovement.create({
           data: {
@@ -252,35 +264,134 @@ export class PurchasesService {
   }
 
   /**
-   * Borrar una compra saca del inventario lo que metio y deshace el costo
-   * promedio en sentido contrario. Solo tiene sentido para corregir un error
-   * reciente, asi que se bloquea si dejaria el stock en negativo.
+   * Borrar una compra saca del inventario lo que metio y devuelve el costo
+   * de cada producto a como estaba (ver `costoSinLaCompra`). Solo tiene
+   * sentido para corregir un error, asi que se bloquea si dejaria el stock
+   * en negativo. Una deuda anterior no trae productos: solo se borra.
    */
   async remove(businessId: string, id: string) {
     const compra = await this.findOne(businessId, id);
 
+    // Un producto puede venir en varias lineas: se deshace todo junto.
+    const porProducto = new Map<
+      string,
+      {
+        nombre: string;
+        cantidad: Prisma.Decimal;
+        valor: Prisma.Decimal;
+        costoAnterior: Prisma.Decimal | null;
+      }
+    >();
     for (const item of compra.items) {
-      const producto = await this.prisma.product.findUniqueOrThrow({
-        where: { id: item.productId },
-      });
-      if (toDecimal(producto.stock).lessThan(toDecimal(item.quantity))) {
+      const actual = porProducto.get(item.productId) ?? {
+        nombre: item.product.name,
+        cantidad: new Prisma.Decimal(0),
+        valor: new Prisma.Decimal(0),
+        costoAnterior: item.previousCostPrice,
+      };
+      actual.cantidad = actual.cantidad.plus(toDecimal(item.quantity));
+      actual.valor = actual.valor.plus(toDecimal(item.subtotal));
+      porProducto.set(item.productId, actual);
+    }
+
+    const ids = [...porProducto.keys()];
+    const productos = new Map(
+      (
+        await this.prisma.product.findMany({ where: { id: { in: ids }, businessId } })
+      ).map((producto) => [producto.id, producto]),
+    );
+
+    for (const [productId, sale] of porProducto) {
+      if (toDecimal(productos.get(productId)!.stock).lessThan(sale.cantidad)) {
         throw new BadRequestException(
-          `No se puede borrar: ya se vendió parte de "${item.product.name}". Corrige la compra con un ajuste de inventario.`,
+          `No se puede borrar: ya se vendió parte de "${sale.nombre}". Corrige la compra con un ajuste de inventario.`,
         );
       }
     }
 
+    // ¿Entro mas mercancia de esos productos despues de esta compra? Entonces
+    // el costo de antes ya no sirve tal cual.
+    const conEntradasDespues = new Set(
+      (
+        await this.prisma.stockMovement.findMany({
+          where: {
+            businessId,
+            productId: { in: ids },
+            type: 'IN',
+            createdAt: { gt: compra.createdAt },
+            OR: [
+              { purchaseItemId: null },
+              { purchaseItemId: { notIn: compra.items.map((item) => item.id) } },
+            ],
+          },
+          select: { productId: true },
+          distinct: ['productId'],
+        })
+      ).map((movimiento) => movimiento.productId),
+    );
+
     await this.prisma.$transaction(async (tx) => {
-      for (const item of compra.items) {
+      for (const [productId, sale] of porProducto) {
+        const producto = productos.get(productId)!;
         await tx.product.update({
-          where: { id: item.productId },
-          data: { stock: { decrement: item.quantity } },
+          where: { id: productId },
+          data: {
+            stock: { decrement: sale.cantidad },
+            costPrice: costoSinLaCompra({
+              stockActual: producto.stock,
+              costoActual: producto.costPrice,
+              cantidad: sale.cantidad,
+              valorCompra: sale.valor,
+              costoAnterior: sale.costoAnterior,
+              entroMasDespues: conEntradasDespues.has(productId),
+            }),
+          },
         });
       }
       await tx.purchase.delete({ where: { id } });
     });
 
-    return { message: 'Compra eliminada y mercancía retirada del inventario' };
+    return {
+      message: compra.isOpeningBalance
+        ? 'Deuda anterior eliminada'
+        : 'Compra eliminada y mercancía retirada del inventario',
+    };
+  }
+
+  /**
+   * Lo que se le debia a un proveedor antes de empezar a usar Arqueo, por
+   * mercancia que ya se vendio. No trae productos: si la mercancia sigue en
+   * la estanteria, lo correcto es registrar una compra normal.
+   *
+   * Cuenta en la deuda y se abona como cualquier compra, pero no es mercancia
+   * comprada en el periodo ni toca el inventario.
+   */
+  async createOpeningBalance(
+    businessId: string,
+    userId: string,
+    dto: OpeningBalanceDto,
+  ) {
+    const supplierId = await this.resolverProveedor(businessId, dto);
+
+    if (!supplierId) {
+      throw new BadRequestException('Indica a qué proveedor le debes');
+    }
+
+    const compra = await this.prisma.purchase.create({
+      data: {
+        businessId,
+        userId,
+        supplierId,
+        isOpeningBalance: true,
+        date: parseBusinessDate(dto.date),
+        dueDate: dto.dueDate ? parseBusinessDate(dto.dueDate) : null,
+        notes: dto.notes?.trim() || null,
+        total: money(dto.amount),
+      },
+      include: PURCHASE_INCLUDE,
+    });
+
+    return this.conSaldo(compra);
   }
 
   /** Lo que se le debe a cada proveedor, y que hay vencido. */
@@ -399,7 +510,7 @@ export class PurchasesService {
 
   private async resolverProveedor(
     businessId: string,
-    dto: CreatePurchaseDto,
+    dto: { supplierId?: string; supplierName?: string },
   ): Promise<string | null> {
     if (dto.supplierId) {
       const existe = await this.prisma.supplier.findFirst({

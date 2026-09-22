@@ -1,5 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class UpdateBusinessDto {
   @ApiPropertyOptional({ example: 'Tienda La Esquina' })
@@ -21,4 +30,16 @@ export class UpdateBusinessDto {
   @IsString()
   @MaxLength(60)
   timezone?: string;
+
+  @ApiPropertyOptional({
+    example: 3.5,
+    description:
+      'Lo que se queda el datáfono de cada venta con tarjeta, en %, sumando comisión, IVA y retenciones',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(30, { message: 'La comisión del datáfono no puede pasar del 30 %' })
+  cardFeePercent?: number;
 }

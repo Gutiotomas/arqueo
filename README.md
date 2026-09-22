@@ -16,10 +16,11 @@ abrirlo a más clientes no obliga a reescribir nada.
 | **Ventas** | Cada venta tiene líneas: pueden ser productos del inventario (descuentan stock) o conceptos libres (servicios, recargas, lo que no está catalogado). |
 | **Gastos** | Con categorías, forma de pago y notas. |
 | **Inventario** | Productos con costo promedio ponderado y precio de venta, stock mínimo, entradas de mercancía y ajustes por conteo físico. Cada movimiento queda registrado. |
-| **Compras y deudas** | Las compras a proveedor entran al inventario (no son gasto) y pueden quedar a deber: se van pagando con abonos parciales y la app lleva el saldo por proveedor, con aviso de lo vencido. |
+| **Compras y deudas** | Las compras a proveedor entran al inventario (no son gasto) y pueden quedar a deber: se van pagando con abonos parciales y la app lleva el saldo por proveedor, con aviso de lo vencido. Lo que ya se debía antes de usar Arqueo se apunta como **deuda anterior**. |
 | **Pérdidas** | Mercancía dañada, vencida o robada. Sale del inventario siempre, pero lo que pierdes depende del proveedor: si la repone gratis no pierdes nada, si la repone cobrando pierdes solo eso, y si no la repone pierdes el costo entero. Los casos sin respuesta quedan marcados hasta que el proveedor conteste. |
 | **Contabilidad** | Estado de resultados de verdad: ventas − costo de lo vendido = utilidad bruta; menos la mercancía perdida y los gastos de operar = utilidad neta. Con un veredicto claro de si el negocio gana o pierde, más el valor del inventario y la deuda pendiente. |
-| **Cierre de caja** | Efectivo esperado = apertura + ventas en efectivo − gastos en efectivo − abonos a proveedores en efectivo. La app calcula el esperado y muestra el descuadre. |
+| **Cierre de caja** | Efectivo esperado = apertura + ventas en efectivo − gastos en efectivo − abonos a proveedores en efectivo − lo consignado a la cuenta + lo sacado de la cuenta. La app calcula el esperado y muestra el descuadre. |
+| **Cierre de cuenta** | El dinero de transferencias y tarjeta. Cada cierre parte del saldo real del anterior, suma lo que entró por la cuenta y resta lo que se pagó por ella, y se compara con lo que dice la app del banco. Las consignaciones y retiros entre caja y cuenta se apuntan aparte y cuadran las dos. |
 | **Dashboard** | KPIs con variación frente al periodo anterior (ventas, utilidad bruta, gastos, utilidad neta), ingresos contra gastos día a día, reparto por forma de pago, gastos por categoría, productos más vendidos con su margen y avisos de stock bajo. |
 | **Informes** | PDF y Excel del día, la semana, el mes o un rango libre. Ambos salen de la misma fuente de datos que el dashboard, así que nunca se contradicen. |
 
@@ -134,7 +135,7 @@ login y `/health`. Documentación interactiva en `/docs`.
 | **auth** | `POST /auth/register` · `POST /auth/login` · `GET /auth/me` · `PATCH /auth/password` |
 | **business** | `GET /business` · `PATCH /business` |
 | **products** | `GET /products` · `POST` · `GET /:id` · `PATCH /:id` · `DELETE /:id` · `POST /:id/stock-in` · `POST /:id/adjust-stock` · `GET /:id/movements` · `GET /products/low-stock` |
-| **purchases** | `GET /purchases` · `POST` · `GET /:id` · `DELETE /:id` · `POST /:id/payments` · `DELETE /:id/payments/:paymentId` · `GET /purchases/debt` |
+| **purchases** | `GET /purchases` · `POST` · `GET /:id` · `DELETE /:id` · `POST /:id/payments` · `DELETE /:id/payments/:paymentId` · `GET /purchases/debt` · `POST /purchases/opening-balance` |
 | **suppliers** | `GET` · `POST` · `PATCH /:id` · `DELETE /:id` |
 | **losses** | `GET /losses` · `POST` · `GET /:id` · `PATCH /:id/resolve` · `DELETE /:id` · `GET /losses/summary` |
 | **product-categories** | `GET` · `POST` · `PATCH /:id` · `DELETE /:id` |
@@ -142,6 +143,7 @@ login y `/health`. Documentación interactiva en `/docs`.
 | **expenses** | `GET /expenses` · `POST` · `GET /:id` · `PATCH /:id` · `DELETE /:id` |
 | **expense-categories** | `GET` · `POST` · `PATCH /:id` · `DELETE /:id` |
 | **cash-closings** | `GET` · `GET /preview?date` · `POST` · `GET /:id` · `PATCH /:id` · `DELETE /:id` |
+| **bank-account** | `GET /summary` · `GET /preview?date` · `GET /closings` · `POST /closings` · `GET /closings/:id` · `PATCH /closings/:id` · `DELETE /closings/:id` · `GET /movements` · `POST /movements` · `DELETE /movements/:id` |
 | **dashboard** | `GET /dashboard/summary` · `/timeseries` · `/sales-by-payment-method` · `/expenses-by-category` · `/top-products` · `/low-stock` |
 | **accounting** | `GET /accounting/overview` · `GET /accounting/profit-and-loss` |
 | **reports** | `GET /reports/preview` · `GET /reports/pdf` · `GET /reports/xlsx` (con `period=day\|week\|month&date=` o `from=&to=`) |
@@ -172,10 +174,36 @@ el estado de resultados sale cuadrado sin hacer nada raro.
 en su línea, así que el margen de hace un mes no cambia porque el proveedor
 haya subido los precios esta semana.
 
+**La cuenta sigue de un día para otro; la caja no.** La caja abre cada día con
+lo que se cuenta. La cuenta no: cada cierre de cuenta parte del saldo real del
+anterior y suma todo lo que pasó desde entonces por transferencia o tarjeta. El
+primer cierre es solo el punto de partida (no se compara con nada). Por eso los
+cierres de cuenta van en orden y solo se corrige o borra el último: los demás
+son la base del siguiente. Efectivo va a la caja, transferencia y tarjeta a la
+cuenta, y "otro" a ninguna de las dos.
+
+**La comisión del datáfono se congela en la venta.** El % se configura en
+Ajustes y cada venta con tarjeta guarda lo que se quedó el datáfono
+(`Sale.cardFee`), igual que cada línea guarda su costo. Cambiar el % no
+reescribe el pasado. Esa comisión entra a la cuenta descontada y resta en la
+utilidad neta.
+
 **Al proveedor se le puede ir pagando de a poco.** Una compra guarda su total y
 lo abonado; cada abono es una salida de caja de verdad (y se descuenta en el
 cierre de caja si fue en efectivo), mientras que la compra en sí no toca la
 caja hasta que se paga.
+
+**Borrar una compra la deshace del todo.** Saca del inventario lo que entró y
+devuelve el costo del producto a como estaba: cada línea guarda el costo previo
+(`previousCostPrice`). Si después entró más mercancía de ese producto, el costo
+previo ya no sirve y se recalcula el promedio como si la compra no hubiera
+existido. No se puede borrar si ya se vendió parte de lo que trajo.
+
+**La deuda anterior no es mercancía.** Lo que se le debía a un proveedor antes
+de empezar a usar Arqueo, por mercancía que ya se vendió, es una compra sin
+productos (`isOpeningBalance`): suma a la deuda y se abona igual, pero no mueve
+el inventario ni cuenta como mercancía comprada en el periodo. Si la mercancía
+sigue en la estantería, lo correcto es una compra normal.
 
 **Lo que se daña no se pierde siempre.** Una caja rota sale del inventario, pero
 el dinero solo se pierde si el proveedor no la repone. Por eso cada registro de

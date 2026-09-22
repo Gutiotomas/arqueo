@@ -23,12 +23,15 @@ datasource db {
 // --------------------------------------------------------------------------
 
 model Business {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  currency  String   @default("COP")
-  timezone  String   @default("America/Bogota")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  currency       String   @default("COP")
+  timezone       String   @default("America/Bogota")
+  /// Lo que se queda el datafono de cada venta con tarjeta (comision, IVA y
+  /// retenciones, todo junto). 0 si no se usa datafono.
+  cardFeePercent Decimal  @default(0) @map("card_fee_percent") @db.Decimal(5, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   users             User[]
   productCategories ProductCategory[]
@@ -42,6 +45,8 @@ model Business {
   suppliers         Supplier[]
   purchases         Purchase[]
   purchasePayments  PurchasePayment[]
+  accountMovements  AccountMovement[]
+  accountClosings   AccountClosing[]
 
   @@map("businesses")
 }
@@ -70,6 +75,8 @@ model User {
   stockLosses      StockLoss[]
   purchases        Purchase[]
   purchasePayments PurchasePayment[]
+  accountMovements AccountMovement[]
+  accountClosings  AccountClosing[]
 
   @@index([businessId])
   @@map("users")
@@ -191,6 +198,9 @@ model Sale {
   paymentMethod PaymentMethod @map("payment_method")
   /// Suma de los subtotales de las lineas. Siempre se calcula en el servidor.
   total         Decimal       @db.Decimal(14, 2)
+  /// Lo que se queda el datafono si se pago con tarjeta. Se congela al
+  /// guardar la venta: cambiar el % despues no reescribe el pasado.
+  cardFee       Decimal       @default(0) @map("card_fee") @db.Decimal(14, 2)
   notes         String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -331,17 +341,20 @@ model Purchase {
   supplierId String? @map("supplier_id") @db.Uuid
   userId     String? @map("user_id") @db.Uuid
 
-  date          DateTime  @db.Date
+  date             DateTime  @db.Date
   /// Numero de factura o remision del proveedor.
-  invoiceNumber String?   @map("invoice_number")
-  total         Decimal   @db.Decimal(14, 2)
+  invoiceNumber    String?   @map("invoice_number")
+  total            Decimal   @db.Decimal(14, 2)
   /// Suma de los abonos. Se actualiza en la misma transaccion que el abono.
-  paidAmount    Decimal   @default(0) @map("paid_amount") @db.Decimal(14, 2)
+  paidAmount       Decimal   @default(0) @map("paid_amount") @db.Decimal(14, 2)
   /// Cuando hay que terminar de pagarla, si el proveedor dio plazo.
-  dueDate       DateTime? @map("due_date") @db.Date
-  notes         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  dueDate          DateTime? @map("due_date") @db.Date
+  notes            String?
+  /// Deuda de antes de usar Arqueo, por mercancia que ya no esta. No trae
+  /// productos, no mueve el inventario ni cuenta como compra del periodo.
+  isOpeningBalance Boolean   @default(false) @map("is_opening_balance")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
   supplier Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
@@ -359,9 +372,12 @@ model PurchaseItem {
   purchaseId String @map("purchase_id") @db.Uuid
   productId  String @map("product_id") @db.Uuid
 
-  quantity Decimal @db.Decimal(12, 3)
-  unitCost Decimal @map("unit_cost") @db.Decimal(14, 2)
-  subtotal Decimal @db.Decimal(14, 2)
+  quantity          Decimal  @db.Decimal(12, 3)
+  unitCost          Decimal  @map("unit_cost") @db.Decimal(14, 2)
+  subtotal          Decimal  @db.Decimal(14, 2)
+  /// Costo del producto justo antes de esta compra, para poder deshacerla.
+  /// Vacio en las compras registradas antes de que existiera.
+  previousCostPrice Decimal? @map("previous_cost_price") @db.Decimal(14, 2)
 
   purchase Purchase       @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   product  Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -431,10 +447,10 @@ model StockLoss {
   /// Costo que tenia la mercancia el dia que se dano (foto fija).
   unitCost Decimal  @map("unit_cost") @db.Decimal(14, 2)
 
-  reason     LossReason
-  resolution LossResolution @default(PENDING)
+  reason              LossReason
+  resolution          LossResolution @default(PENDING)
   /// Lo que cobra el proveedor por unidad repuesta (0 si la repone gratis).
-  replacementUnitCost Decimal @default(0) @map("replacement_unit_cost") @db.Decimal(14, 2)
+  replacementUnitCost Decimal        @default(0) @map("replacement_unit_cost") @db.Decimal(14, 2)
   /// Como se pago esa reposicion, si hubo que pagarla.
   paymentMethod       PaymentMethod? @map("payment_method")
   /// Dinero que el negocio pierde de verdad con este caso.
@@ -455,4 +471,62 @@ model StockLoss {
   @@index([businessId, date])
   @@index([productId])
   @@map("stock_losses")
+}
+
+// --------------------------------------------------------------------------
+// Cuenta del negocio (transferencias y tarjeta)
+// --------------------------------------------------------------------------
+
+/// Dinero que entra o sale de la cuenta sin ser venta, gasto ni abono.
+enum AccountMovementType {
+  CASH_DEPOSIT // se consigno efectivo de la caja: entra a la cuenta, sale de la caja
+  CASH_WITHDRAWAL // se saco de la cuenta para la caja: al reves
+  OTHER_IN // aporte del dueno, prestamo...
+  OTHER_OUT // retiro personal del dueno...
+}
+
+model AccountMovement {
+  id          String              @id @default(uuid()) @db.Uuid
+  businessId  String              @map("business_id") @db.Uuid
+  userId      String?             @map("user_id") @db.Uuid
+  date        DateTime            @db.Date
+  type        AccountMovementType
+  amount      Decimal             @db.Decimal(14, 2)
+  description String?
+  createdAt   DateTime            @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, date])
+  @@map("account_movements")
+}
+
+/// Cuadre de la cuenta: lo que deberia haber frente a lo que dice el banco.
+/// A diferencia de la caja, el saldo sigue de un cierre al siguiente: cada
+/// cierre parte del saldo real del anterior.
+model AccountClosing {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @map("business_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  date       DateTime @db.Date
+
+  /// Saldo real del cierre anterior. Vacio en el primero, que es el punto de
+  /// partida y no se compara con nada.
+  openingBalance  Decimal? @map("opening_balance") @db.Decimal(14, 2)
+  /// Lo que dice la app del banco al cerrar.
+  closingBalance  Decimal  @map("closing_balance") @db.Decimal(14, 2)
+  expectedBalance Decimal  @map("expected_balance") @db.Decimal(14, 2)
+  /// closingBalance - expectedBalance. Negativo = falta dinero en la cuenta.
+  difference      Decimal  @db.Decimal(14, 2)
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([businessId, date])
+  @@map("account_closings")
 }

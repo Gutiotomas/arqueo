@@ -63,6 +63,13 @@ export class ExcelRenderer {
           ][])
         : []),
       ['Gastos de operar', `-${data.kpis.expenses}`, false],
+      ...(Number(data.kpis.cardFees) > 0
+        ? ([['Comisiones del datáfono', `-${data.kpis.cardFees}`, false]] as [
+            string,
+            string,
+            boolean,
+          ][])
+        : []),
       ['UTILIDAD NETA', data.kpis.profit, true],
     ];
     for (const [etiqueta, valor, destacar] of resultado) {

@@ -28,7 +28,7 @@ const NAVEGACION = [
   { to: '/compras', label: 'Compras', hint: 'Proveedores y deudas', icon: Truck },
   { to: '/perdidas', label: 'Pérdidas', hint: 'Mercancía dañada', icon: PackageX },
   { to: '/contabilidad', label: 'Contabilidad', hint: '¿Ganas o pierdes?', icon: Calculator },
-  { to: '/caja', label: 'Cierre de caja', hint: 'Cuadre diario', icon: Wallet },
+  { to: '/caja', label: 'Caja y cuenta', hint: 'Cuadre del efectivo y el banco', icon: Wallet },
   { to: '/informes', label: 'Informes', hint: 'PDF y Excel', icon: FileText },
   { to: '/ajustes', label: 'Ajustes', hint: 'Datos del negocio', icon: Settings },
 ];

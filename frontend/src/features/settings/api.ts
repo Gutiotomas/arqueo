@@ -7,6 +7,8 @@ export interface BusinessPayload {
   name?: string;
   currency?: string;
   timezone?: string;
+  /** % que se queda el datáfono de cada venta con tarjeta. */
+  cardFeePercent?: number;
 }
 
 export interface PasswordPayload {

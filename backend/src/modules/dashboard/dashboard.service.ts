@@ -111,7 +111,11 @@ export class DashboardService {
     };
 
     const [ventas, gastos, costo, merma] = await Promise.all([
-      this.prisma.sale.aggregate({ where, _sum: { total: true }, _count: true }),
+      this.prisma.sale.aggregate({
+        where,
+        _sum: { total: true, cardFee: true },
+        _count: true,
+      }),
       this.prisma.expense.aggregate({
         where,
         _sum: { amount: true },
@@ -124,8 +128,10 @@ export class DashboardService {
     const sales = money(ventas._sum.total ?? 0);
     const expenses = money(gastos._sum.amount ?? 0);
     const losses = money(merma._sum.lossAmount ?? 0);
+    const cardFees = money(ventas._sum.cardFee ?? 0);
     // Utilidad bruta: lo que dejan las ventas descontando lo que costo la
-    // mercancia. La neta ademas resta la merma y los gastos de operar.
+    // mercancia. La neta ademas resta la merma, los gastos de operar y lo que
+    // se quedo el datafono.
     const grossProfit = money(sales.minus(costo));
 
     return {
@@ -134,7 +140,7 @@ export class DashboardService {
       cogs: costo,
       grossProfit,
       losses,
-      profit: money(grossProfit.minus(losses).minus(expenses)),
+      profit: money(grossProfit.minus(losses).minus(expenses).minus(cardFees)),
       salesCount: ventas._count,
       expensesCount: gastos._count,
       averageTicket: ventas._count

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
+import type { PaymentMethod } from '../../generated/prisma/enums';
 import { paginated } from '../../common/dto/pagination.dto';
 import { parseBusinessDate } from '../../common/utils/dates';
 import { money, quantity, sumDecimals, toDecimal } from '../../common/utils/money';
@@ -75,6 +76,8 @@ export class SalesService {
 
   async create(businessId: string, userId: string, dto: CreateSaleDto) {
     const lineas = await this.prepareItems(businessId, dto.items);
+    const total = sumDecimals(lineas.map((linea) => linea.subtotal));
+    const cardFee = await this.comisionDatafono(businessId, dto.paymentMethod, total);
 
     return this.prisma.$transaction(async (tx) => {
       const sale = await tx.sale.create({
@@ -83,7 +86,8 @@ export class SalesService {
           userId,
           date: parseBusinessDate(dto.date),
           paymentMethod: dto.paymentMethod,
-          total: sumDecimals(lineas.map((linea) => linea.subtotal)),
+          total,
+          cardFee,
           notes: dto.notes?.trim() || null,
         },
       });
@@ -104,6 +108,8 @@ export class SalesService {
   async update(businessId: string, userId: string, id: string, dto: CreateSaleDto) {
     await this.findOne(businessId, id);
     const lineas = await this.prepareItems(businessId, dto.items);
+    const total = sumDecimals(lineas.map((linea) => linea.subtotal));
+    const cardFee = await this.comisionDatafono(businessId, dto.paymentMethod, total);
 
     return this.prisma.$transaction(async (tx) => {
       await this.revertStock(tx, id);
@@ -114,7 +120,8 @@ export class SalesService {
         data: {
           date: parseBusinessDate(dto.date),
           paymentMethod: dto.paymentMethod,
-          total: sumDecimals(lineas.map((linea) => linea.subtotal)),
+          total,
+          cardFee,
           notes: dto.notes?.trim() || null,
         },
       });
@@ -188,6 +195,26 @@ export class SalesService {
         subtotal: money(cantidad.times(precio)),
       };
     });
+  }
+
+  /**
+   * Lo que se queda el datafono de una venta con tarjeta. Se guarda en la
+   * venta, como el costo en cada linea: si mañana cambia el %, las ventas de
+   * hoy no cambian.
+   */
+  private async comisionDatafono(
+    businessId: string,
+    paymentMethod: PaymentMethod,
+    total: Prisma.Decimal,
+  ): Promise<Prisma.Decimal> {
+    if (paymentMethod !== 'CARD') return new Prisma.Decimal(0);
+
+    const { cardFeePercent } = await this.prisma.business.findUniqueOrThrow({
+      where: { id: businessId },
+      select: { cardFeePercent: true },
+    });
+
+    return money(total.times(cardFeePercent).dividedBy(100));
   }
 
   /** Inserta lineas y, para las que llevan producto, descuenta stock. */

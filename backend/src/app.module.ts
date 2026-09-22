@@ -8,6 +8,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BankAccountModule } from './modules/bank-account/bank-account.module';
 import { BusinessModule } from './modules/business/business.module';
 import { CashClosingsModule } from './modules/cash-closings/cash-closings.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
@@ -39,6 +40,7 @@ import { SalesModule } from './modules/sales/sales.module';
     ExpenseCategoriesModule,
     ExpensesModule,
     CashClosingsModule,
+    BankAccountModule,
     DashboardModule,
     AccountingModule,
     ReportsModule,

@@ -11,6 +11,7 @@ import { ApiError } from '@/shared/api/client';
 import type { Product } from '@/shared/api/types';
 import { cn } from '@/shared/lib/cn';
 import { formatMoney, formatPercent, toNumber } from '@/shared/lib/money';
+import { pasoCantidad } from '@/shared/lib/unidades';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Select } from '@/shared/ui/field';
@@ -108,6 +109,8 @@ export function ProductFormDialog({
   }
 
   const guardando = crear.isPending || actualizar.isPending;
+  // El stock se escribe en la unidad que se está poniendo arriba.
+  const paso = pasoCantidad(unidad);
 
   return (
     <Dialog
@@ -185,7 +188,8 @@ export function ProductFormDialog({
               <Input
                 type="number"
                 min="0"
-                step="0.001"
+                step={paso.step}
+                inputMode={paso.inputMode}
                 className="text-right tabular"
                 value={stockInicial}
                 onChange={(e) =>
@@ -199,7 +203,8 @@ export function ProductFormDialog({
             <Input
               type="number"
               min="0"
-              step="0.001"
+              step={paso.step}
+              inputMode={paso.inputMode}
               className="text-right tabular"
               value={minimo}
               onChange={(e) =>

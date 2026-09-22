@@ -30,6 +30,8 @@ export interface ReportData {
     losses: string;
     lossesCount: number;
     expenses: string;
+    /** Lo que se quedo el datafono de las ventas con tarjeta. */
+    cardFees: string;
     /** Utilidad neta: bruta menos gastos de operar. */
     profit: string;
     salesCount: number;
@@ -176,6 +178,7 @@ export class ReportsService {
         losses: contabilidad.losses,
         lossesCount: contabilidad.lossesCount,
         expenses: contabilidad.operatingExpenses,
+        cardFees: contabilidad.cardFees,
         profit: contabilidad.netProfit,
         salesCount: summary.salesCount,
         expensesCount: summary.expensesCount,

@@ -21,6 +21,8 @@ export interface Business {
   name: string;
   currency: string;
   timezone: string;
+  /** % que se queda el datáfono. Solo viene en GET /business, no en la sesión. */
+  cardFeePercent?: string;
 }
 
 export interface User {
@@ -121,12 +123,82 @@ export interface CashPreview {
   cashSalesCount: number;
   cashExpenses: string;
   cashExpensesCount: number;
-  /** Abonos a proveedores pagados en efectivo ese día. */
   /** Abonos a proveedores y reposiciones pagadas, en efectivo. */
   cashSupplierPayments: string;
   cashSupplierPaymentsCount: number;
+  /** Efectivo consignado en la cuenta ese día. */
+  depositedToAccount: string;
+  /** Dinero sacado de la cuenta para la caja ese día. */
+  withdrawnFromAccount: string;
   expectedCash: string;
   existingClosingId: string | null;
+}
+
+/** Dinero que entra o sale de la cuenta sin ser venta, gasto ni abono. */
+export type AccountMovementType =
+  | 'CASH_DEPOSIT'
+  | 'CASH_WITHDRAWAL'
+  | 'OTHER_IN'
+  | 'OTHER_OUT';
+
+export interface AccountMovement {
+  id: string;
+  date: string;
+  type: AccountMovementType;
+  amount: string;
+  description: string | null;
+}
+
+export interface AccountClosing {
+  id: string;
+  date: string;
+  /** Vacío en el primer cierre, que es el punto de partida. */
+  openingBalance: string | null;
+  closingBalance: string;
+  expectedBalance: string;
+  difference: string;
+  notes: string | null;
+}
+
+/** Lo que entró y salió de la cuenta en un tramo de fechas. */
+export interface AccountFlows {
+  transferSales: string;
+  transferSalesCount: number;
+  cardSales: string;
+  cardFees: string;
+  cardSalesCount: number;
+  expenses: string;
+  expensesCount: number;
+  supplierPayments: string;
+  supplierPaymentsCount: number;
+  cashDeposits: string;
+  cashWithdrawals: string;
+  otherIn: string;
+  otherOut: string;
+  net: string;
+}
+
+export interface AccountPreview {
+  date: string;
+  existingClosingId: string | null;
+  /** Si hay un cierre después, este día ya no se puede cerrar ni corregir. */
+  laterClosingDate: string | null;
+  isStartingPoint: boolean;
+  previousClosing: { id: string; date: string; closingBalance: string } | null;
+  openingBalance: string | null;
+  movements: AccountFlows | null;
+  expectedBalance: string | null;
+}
+
+export interface AccountSummary {
+  lastClosing: {
+    id: string;
+    date: string;
+    closingBalance: string;
+    difference: string;
+  } | null;
+  estimatedBalance: string | null;
+  sinceLastClosing: AccountFlows | null;
 }
 
 export interface DateRange {
@@ -269,6 +341,8 @@ export interface Purchase {
   balance: string;
   status: PurchaseStatus;
   notes: string | null;
+  /** Deuda de antes de usar Arqueo: no trae productos ni movió el inventario. */
+  isOpeningBalance: boolean;
   items: PurchaseItem[];
   payments: PurchasePayment[];
   supplier: { id: string; name: string } | null;
@@ -297,6 +371,8 @@ export interface AccountingOverview {
   losses: string;
   lossesCount: number;
   operatingExpenses: string;
+  /** Lo que se quedó el datáfono de las ventas con tarjeta. */
+  cardFees: string;
   netProfit: string;
   netMargin: number;
   salesCount: number;

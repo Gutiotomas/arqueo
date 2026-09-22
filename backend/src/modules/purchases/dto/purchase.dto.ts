@@ -116,6 +116,51 @@ export class CreatePurchaseDto {
   notes?: string;
 }
 
+/**
+ * Lo que se le debia a un proveedor antes de usar Arqueo, por mercancia que
+ * ya no esta en la estanteria.
+ */
+export class OpeningBalanceDto {
+  @ApiProperty({ example: '2026-09-22', description: 'Normalmente, el dia en que lo apuntas' })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'La fecha debe tener formato YYYY-MM-DD' })
+  date!: string;
+
+  @ApiPropertyOptional({ format: 'uuid', description: 'Proveedor ya registrado' })
+  @IsOptional()
+  @IsUUID('4')
+  supplierId?: string;
+
+  @ApiPropertyOptional({
+    example: 'Distribuidora El Trigal',
+    description: 'Si el proveedor no existe todavia, se crea con este nombre',
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  supplierName?: string;
+
+  @ApiProperty({ example: 350000, description: 'Lo que le debes hoy a ese proveedor' })
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01, { message: 'La deuda debe ser mayor que cero' })
+  amount!: number;
+
+  @ApiPropertyOptional({
+    example: '2026-10-15',
+    description: 'Fecha limite para terminar de pagarla',
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'dueDate debe tener formato YYYY-MM-DD' })
+  dueDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string;
+}
+
 export class PurchaseQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ example: '2026-09-01' })
   @IsOptional()

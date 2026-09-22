@@ -48,6 +48,16 @@ export interface PurchasePayload {
   initialPayment?: PaymentPayload;
 }
 
+/** Lo que se le debía a un proveedor antes de usar Arqueo. */
+export interface OpeningBalancePayload {
+  date: string;
+  supplierId?: string;
+  supplierName?: string;
+  amount: number;
+  dueDate?: string;
+  notes?: string;
+}
+
 export function usePurchases(filtros: PurchaseFilters) {
   return useQuery({
     queryKey: ['purchases', 'lista', filtros],
@@ -82,6 +92,7 @@ function useInvalidarCompras() {
     cliente.invalidateQueries({ queryKey: ['accounting'] });
     cliente.invalidateQueries({ queryKey: ['products'] });
     cliente.invalidateQueries({ queryKey: ['cash'] });
+    cliente.invalidateQueries({ queryKey: ['account'] });
     cliente.invalidateQueries({ queryKey: ['suppliers'] });
   };
 }
@@ -90,6 +101,15 @@ export function useCreatePurchase() {
   const invalidar = useInvalidarCompras();
   return useMutation({
     mutationFn: (datos: PurchasePayload) => api.post<Purchase>('/purchases', datos),
+    onSuccess: invalidar,
+  });
+}
+
+export function useCreateOpeningBalance() {
+  const invalidar = useInvalidarCompras();
+  return useMutation({
+    mutationFn: (datos: OpeningBalancePayload) =>
+      api.post<Purchase>('/purchases/opening-balance', datos),
     onSuccess: invalidar,
   });
 }
