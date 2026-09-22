@@ -4,7 +4,8 @@ import { useProductMovements } from './api';
 import type { Product, StockMovement } from '@/shared/api/types';
 import { cn } from '@/shared/lib/cn';
 import { formatDate } from '@/shared/lib/dates';
-import { formatQuantity, toNumber } from '@/shared/lib/money';
+import { toNumber } from '@/shared/lib/money';
+import { cantidadConUnidad } from '@/shared/lib/unidades';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import {
@@ -130,10 +131,10 @@ export function MovementsDialog({
                       )}
                     >
                       {delta > 0 ? '+' : ''}
-                      {formatQuantity(delta)} {unidad}
+                      {cantidadConUnidad(delta, unidad)}
                     </Td>
                     <Td align="right" className="whitespace-nowrap text-slate-900">
-                      {formatQuantity(movimiento.stockAfter)} {unidad}
+                      {cantidadConUnidad(movimiento.stockAfter, unidad)}
                     </Td>
                     <Td>
                       <span className="text-slate-600">

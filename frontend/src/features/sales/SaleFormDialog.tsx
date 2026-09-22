@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { useCreateSale, useUpdateSale, type SalePayload } from './api';
 import { useAuth } from '@/features/auth/auth-context';
-import { pasoCantidad } from '@/shared/lib/unidades';
+import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
 import { ApiError, api } from '@/shared/api/client';
 import {
   PAYMENT_METHODS,
@@ -14,7 +14,7 @@ import {
   type Sale,
 } from '@/shared/api/types';
 import { today } from '@/shared/lib/dates';
-import { formatMoney, formatQuantity, toNumber } from '@/shared/lib/money';
+import { formatMoney, toNumber } from '@/shared/lib/money';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
@@ -242,7 +242,7 @@ export function SaleFormDialog({
                         <option value="">Concepto libre (sin inventario)</option>
                         {(productos.data?.data ?? []).map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.name} · {formatQuantity(p.stock)} {p.unit}
+                            {p.name} · {cantidadConUnidad(p.stock, p.unit)}
                           </option>
                         ))}
                       </Select>

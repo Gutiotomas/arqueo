@@ -50,6 +50,11 @@ const CashPage = lazy(() =>
 const AccountPage = lazy(() =>
   import('@/features/cash/AccountPage').then((m) => ({ default: m.AccountPage })),
 );
+const SupplierReportPage = lazy(() =>
+  import('@/features/reports/SupplierReportPage').then((m) => ({
+    default: m.SupplierReportPage,
+  })),
+);
 const ReportsPage = lazy(() =>
   import('@/features/reports/ReportsPage').then((m) => ({
     default: m.ReportsPage,
@@ -114,6 +119,7 @@ export function App() {
                 <Route path="/caja" element={<CashPage />} />
                 <Route path="/caja/cuenta" element={<AccountPage />} />
                 <Route path="/informes" element={<ReportsPage />} />
+                <Route path="/informes/proveedores" element={<SupplierReportPage />} />
                 <Route path="/ajustes" element={<SettingsPage />} />
               </Route>
 

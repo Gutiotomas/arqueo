@@ -13,6 +13,7 @@ import {
   formatQuantity,
 } from '../../../common/utils/format';
 import type { ReportData } from '../reports.service';
+import type { SupplierStatement } from '../supplier-statement.service';
 
 // pdfmake es CommonJS y sus funciones usan `this` internamente: con
 // `import * as` el interop pierde las propiedades y al desestructurar se
@@ -309,6 +310,145 @@ export class PdfRenderer {
       );
     }
 
+    return this.documento(contenido, data.business.name);
+  }
+
+  /**
+   * Estado de cuenta con un proveedor: cuánto se le compró, cuánto se le
+   * abonó y cuánto se le debe, con el detalle de cada cosa.
+   */
+  async renderSupplier(data: SupplierStatement): Promise<Buffer> {
+    const { currency } = data.business;
+    const dinero = (valor: string | number) => formatMoney(valor, currency);
+    const resumen = data.summary;
+    const debe = Number(resumen.currentBalance) > 0;
+    const vencido = Number(resumen.overdue) > 0;
+
+    const contenido: Content[] = [
+      {
+        columns: [
+          [
+            { text: data.supplier.name, style: 'titulo' },
+            { text: `Estado de cuenta · ${data.period.label}`, style: 'subtitulo' },
+            ...(data.supplier.phone
+              ? [{ text: `Tel. ${data.supplier.phone}`, style: 'pie', margin: [0, 2, 0, 0] }]
+              : []),
+          ] as Content[],
+          {
+            width: 'auto',
+            stack: [
+              { text: 'ARQUEO', style: 'marca', alignment: 'right' },
+              { text: data.business.name, style: 'pie', alignment: 'right' },
+              {
+                text: `Generado el ${formatDateTimeInTimezone(
+                  data.generatedAt,
+                  data.business.timezone,
+                )}`,
+                style: 'pie',
+                alignment: 'right',
+              },
+            ],
+          },
+        ],
+        margin: [0, 0, 0, 16],
+      },
+
+      // Como un extracto: de dónde se parte, qué entra, qué sale y dónde queda.
+      {
+        table: {
+          widths: ['*', '*', '*', '*'],
+          body: [
+            [
+              this.kpi('Saldo al empezar', dinero(resumen.openingBalance), GRIS),
+              this.kpi(
+                'Compras',
+                dinero(resumen.purchased),
+                AZUL,
+                `${resumen.purchasesCount} en el periodo`,
+              ),
+              this.kpi(
+                'Abonos',
+                dinero(resumen.paid),
+                VERDE,
+                `${resumen.paymentsCount} en el periodo`,
+              ),
+              this.kpi(
+                'Saldo al final',
+                dinero(resumen.closingBalance),
+                Number(resumen.closingBalance) > 0 ? ROJO : VERDE,
+              ),
+            ],
+          ],
+        },
+        layout: 'noBorders',
+        margin: [0, 0, 0, 8],
+      },
+      {
+        text: debe
+          ? `Hoy le debes ${dinero(resumen.currentBalance)}${
+              vencido ? `, de los cuales ${dinero(resumen.overdue)} ya están vencidos` : ''
+            }.`
+          : 'Hoy no le debes nada a este proveedor.',
+        bold: true,
+        color: vencido ? ROJO : debe ? '#111827' : VERDE,
+        margin: [0, 0, 0, 14],
+      },
+
+      { text: 'Compras del periodo', style: 'seccion' },
+      this.tablaSimple(
+        ['Fecha', 'Detalle', 'Total', 'Abonado', 'Saldo hoy', 'Vence'],
+        data.purchases.map((compra) => [
+          formatDate(compra.date),
+          compra.detail,
+          dinero(compra.total),
+          dinero(compra.paid),
+          dinero(compra.balance),
+          compra.dueDate ? formatDate(compra.dueDate) : '—',
+        ]),
+        'No hubo compras en el periodo.',
+        1,
+      ),
+      { text: '', margin: [0, 0, 0, 12] },
+
+      { text: 'Abonos del periodo', style: 'seccion' },
+      this.tablaSimple(
+        ['Fecha', 'A qué se abonó', 'Forma de pago', 'Importe'],
+        data.payments.map((abono) => [
+          formatDate(abono.date),
+          abono.notes ? `${abono.purchase} (${abono.notes})` : abono.purchase,
+          abono.paymentMethod,
+          dinero(abono.amount),
+        ]),
+        'No hubo abonos en el periodo.',
+        1,
+      ),
+      { text: '', margin: [0, 0, 0, 12] },
+
+      { text: 'Lo que se le debe hoy', style: 'seccion' },
+      this.tablaSimple(
+        ['Fecha', 'Detalle', 'Total', 'Abonado', 'Saldo', 'Vence'],
+        data.pending.map((compra) => [
+          formatDate(compra.date),
+          compra.detail,
+          dinero(compra.total),
+          dinero(compra.paid),
+          dinero(compra.balance),
+          compra.dueDate
+            ? compra.daysOverdue > 0
+              ? `${formatDate(compra.dueDate)} (hace ${compra.daysOverdue} d)`
+              : formatDate(compra.dueDate)
+            : '—',
+        ]),
+        'Nada: estás al día con este proveedor.',
+        1,
+      ),
+    ];
+
+    return this.documento(contenido, `${data.business.name} · ${data.supplier.name}`);
+  }
+
+  /** Página, estilos y pie comunes a todos los informes. */
+  private documento(contenido: Content[], pie: string): Promise<Buffer> {
     const definicion: TDocumentDefinitions = {
       pageSize: 'A4',
       pageMargins: [36, 36, 36, 44],
@@ -322,7 +462,7 @@ export class PdfRenderer {
       },
       footer: (pagina: number, total: number) => ({
         columns: [
-          { text: data.business.name, style: 'pie', margin: [36, 0, 0, 0] },
+          { text: pie, style: 'pie', margin: [36, 0, 0, 0] },
           {
             text: `Página ${pagina} de ${total}`,
             style: 'pie',

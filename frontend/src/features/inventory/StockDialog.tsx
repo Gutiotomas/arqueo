@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 
 import { useAdjustStock, useStockIn } from './api';
-import { pasoCantidad } from '@/shared/lib/unidades';
+import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
 import { useAuth } from '@/features/auth/auth-context';
 import { ApiError } from '@/shared/api/client';
 import type { Product } from '@/shared/api/types';
 import { cn } from '@/shared/lib/cn';
-import { formatMoney, formatQuantity, toNumber } from '@/shared/lib/money';
+import { formatMoney, toNumber } from '@/shared/lib/money';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Textarea } from '@/shared/ui/field';
@@ -130,7 +130,7 @@ export function StockDialog({
           <span className="text-sm text-slate-500">
             Stock actual{' '}
             <span className="tabular font-semibold text-slate-900">
-              {formatQuantity(stockActual)} {unidad}
+              {cantidadConUnidad(stockActual, unidad)}
             </span>
           </span>
         </div>
@@ -163,7 +163,7 @@ export function StockDialog({
               <div className="flex items-center justify-between rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
                 <span>El stock quedará en</span>
                 <span className="tabular font-semibold">
-                  {formatQuantity(resultante)} {unidad}
+                  {cantidadConUnidad(resultante, unidad)}
                 </span>
               </div>
             )}
@@ -217,7 +217,7 @@ export function StockDialog({
               </span>
               <span className="tabular font-semibold">
                 {diferencia > 0 ? '+' : ''}
-                {formatQuantity(diferencia)} {unidad}
+                {cantidadConUnidad(diferencia, unidad)}
               </span>
             </div>
           </>

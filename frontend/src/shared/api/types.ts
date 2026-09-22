@@ -280,6 +280,54 @@ export interface LowStockProduct {
   category: { id: string; name: string } | null;
 }
 
+/** Estado de cuenta con un proveedor. */
+export interface SupplierStatement {
+  business: { name: string; currency: string; timezone: string };
+  supplier: { id: string; name: string; phone: string | null };
+  period: { from: string; to: string; label: string; allTime: boolean };
+  generatedAt: string;
+  summary: {
+    openingBalance: string;
+    purchased: string;
+    paid: string;
+    closingBalance: string;
+    /** Lo que se le debe hoy, sea del periodo que sea. */
+    currentBalance: string;
+    overdue: string;
+    purchasesCount: number;
+    paymentsCount: number;
+  };
+  purchases: {
+    date: string;
+    invoiceNumber: string | null;
+    isOpeningBalance: boolean;
+    detail: string;
+    total: string;
+    paid: string;
+    balance: string;
+    dueDate: string | null;
+    status: PurchaseStatus;
+  }[];
+  payments: {
+    date: string;
+    purchase: string;
+    paymentMethod: string;
+    amount: string;
+    notes: string | null;
+  }[];
+  pending: {
+    date: string;
+    invoiceNumber: string | null;
+    isOpeningBalance: boolean;
+    detail: string;
+    total: string;
+    paid: string;
+    balance: string;
+    dueDate: string | null;
+    daysOverdue: number;
+  }[];
+}
+
 export interface ReportData {
   business: { name: string; currency: string; timezone: string };
   period: { type: string; label: string; from: string; to: string };

@@ -31,6 +31,7 @@ import { downloadFile } from '@/shared/api/client';
 import { cn } from '@/shared/lib/cn';
 import { startOfMonth, today } from '@/shared/lib/dates';
 import { formatMoney, formatPercent, formatQuantity } from '@/shared/lib/money';
+import { cantidadConUnidad } from '@/shared/lib/unidades';
 import { Button } from '@/shared/ui/button';
 import { Card, CardBody, CardHeader } from '@/shared/ui/card';
 import { Badge, EmptyState, ErrorMessage, Loading } from '@/shared/ui/feedback';
@@ -273,7 +274,7 @@ export function DashboardPage() {
                     <MobileCard
                       key={producto.productId}
                       title={producto.name}
-                      subtitle={`${formatQuantity(producto.quantity)} ${producto.unit} vendidas`}
+                      subtitle={`${cantidadConUnidad(producto.quantity, producto.unit)} vendidas`}
                       amount={formatMoney(producto.revenue, currency)}
                       details={[
                         {
@@ -302,7 +303,7 @@ export function DashboardPage() {
                             {producto.name}
                           </Td>
                           <Td align="right">
-                            {formatQuantity(producto.quantity)} {producto.unit}
+                            {cantidadConUnidad(producto.quantity, producto.unit)}
                           </Td>
                           <Td align="right">
                             {formatMoney(producto.revenue, currency)}
@@ -349,7 +350,7 @@ export function DashboardPage() {
                       key={producto.id}
                       title={producto.name}
                       subtitle={producto.category?.name ?? 'Sin categoría'}
-                      amount={`${formatQuantity(producto.stock)} ${producto.unit}`}
+                      amount={`${cantidadConUnidad(producto.stock, producto.unit)}`}
                       amountTone={
                         Number(producto.stock) <= 0 ? 'negative' : 'neutral'
                       }
@@ -363,7 +364,7 @@ export function DashboardPage() {
                       details={[
                         {
                           label: 'Mínimo',
-                          value: `${formatQuantity(producto.minStock)} ${producto.unit}`,
+                          value: `${cantidadConUnidad(producto.minStock, producto.unit)}`,
                         },
                       ]}
                     />
@@ -392,7 +393,7 @@ export function DashboardPage() {
                             )}
                           </Td>
                           <Td align="right">
-                            {formatQuantity(producto.stock)} {producto.unit}
+                            {cantidadConUnidad(producto.stock, producto.unit)}
                           </Td>
                           <Td align="right">
                             {formatQuantity(producto.minStock)}

@@ -32,6 +32,7 @@ import { useAuth } from '@/features/auth/auth-context';
 import { ApiError } from '@/shared/api/client';
 import type { Product } from '@/shared/api/types';
 import { formatMoney, formatQuantity, toNumber } from '@/shared/lib/money';
+import { cantidadConUnidad } from '@/shared/lib/unidades';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { ConfirmDialog, Dialog } from '@/shared/ui/dialog';
@@ -318,7 +319,7 @@ export function InventoryPage() {
                         .filter(Boolean)
                         .join(' · ') || 'Sin categoría'
                     }
-                    amount={`${formatQuantity(producto.stock)} ${producto.unit}`}
+                    amount={`${cantidadConUnidad(producto.stock, producto.unit)}`}
                     amountTone={
                       toNumber(producto.stock) <= 0 ? 'negative' : 'neutral'
                     }
@@ -343,7 +344,7 @@ export function InventoryPage() {
                       },
                       {
                         label: 'Mínimo',
-                        value: `${formatQuantity(producto.minStock)} ${producto.unit}`,
+                        value: `${cantidadConUnidad(producto.minStock, producto.unit)}`,
                       },
                     ]}
                     actions={acciones(producto)}
@@ -393,7 +394,7 @@ export function InventoryPage() {
                         </Td>
                         <Td align="right">
                           <Badge tone={tonoStock(producto)}>
-                            {formatQuantity(producto.stock)} {producto.unit}
+                            {cantidadConUnidad(producto.stock, producto.unit)}
                           </Badge>
                         </Td>
                         <Td align="right" className="text-slate-500">

@@ -3,11 +3,13 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  FileText,
   HandCoins,
   Plus,
   Trash2,
 } from 'lucide-react';
 import { Fragment, useState } from 'react';
+import { Link } from 'react-router';
 
 import {
   useDeletePayment,
@@ -31,7 +33,8 @@ import {
 } from '@/shared/api/types';
 import { cn } from '@/shared/lib/cn';
 import { formatDate, startOfMonth, today } from '@/shared/lib/dates';
-import { formatMoney, formatQuantity, toNumber } from '@/shared/lib/money';
+import { formatMoney, toNumber } from '@/shared/lib/money';
+import { cantidadConUnidad } from '@/shared/lib/unidades';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { ConfirmDialog } from '@/shared/ui/dialog';
@@ -110,13 +113,9 @@ function DetalleCompra({
             {compra.items.map((item) => (
               <li key={item.id} className="flex justify-between gap-3 text-sm">
                 <span className="min-w-0">
-                  <span className="text-slate-700">
-                    <span className="tabular text-slate-500">
-                      {formatQuantity(item.quantity)} {item.product.unit} ×
-                    </span>{' '}
-                    {item.product.name}
-                  </span>
-                  <span className="block text-xs text-slate-400">
+                  <span className="text-slate-700">{item.product.name}</span>
+                  <span className="tabular block text-xs text-slate-400">
+                    {cantidadConUnidad(item.quantity, item.product.unit)} ·{' '}
                     {formatMoney(item.unitCost, currency)} por {item.product.unit}
                   </span>
                 </span>
@@ -430,6 +429,14 @@ export function PurchasesPage() {
               </option>
             ))}
           </Select>
+          {filtros.supplierId && (
+            <Button variant="secondary" size="sm" className="w-full sm:w-auto" asChild>
+              <Link to={`/informes/proveedores?proveedor=${filtros.supplierId}`}>
+                <FileText className="h-4 w-4" />
+                Estado de cuenta
+              </Link>
+            </Button>
+          )}
           {hayFiltros && (
             <Button
               variant="ghost"

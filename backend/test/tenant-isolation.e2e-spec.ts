@@ -62,11 +62,11 @@ describe('Aislamiento entre empresas (e2e)', () => {
 
     prisma = app.get(PrismaService);
 
-    const registroA = await http().post('/api/v1/auth/register').send(empresaA);
+    const registroA = await http().post('/api/v1/auth/register').send(empresaA).expect(201);
     tokenA = registroA.body.accessToken;
     businessIdA = registroA.body.user.business.id;
 
-    const registroB = await http().post('/api/v1/auth/register').send(empresaB);
+    const registroB = await http().post('/api/v1/auth/register').send(empresaB).expect(201);
     tokenB = registroB.body.accessToken;
     businessIdB = registroB.body.user.business.id;
 

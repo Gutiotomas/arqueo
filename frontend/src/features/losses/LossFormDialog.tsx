@@ -19,8 +19,8 @@ import {
 } from '@/shared/api/types';
 import { cn } from '@/shared/lib/cn';
 import { today } from '@/shared/lib/dates';
-import { formatMoney, formatQuantity, toNumber } from '@/shared/lib/money';
-import { pasoCantidad } from '@/shared/lib/unidades';
+import { formatMoney, toNumber } from '@/shared/lib/money';
+import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
@@ -221,13 +221,13 @@ export function LossFormDialog({
             <option value="">Elige un producto</option>
             {(productos.data?.data ?? []).map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name} · {formatQuantity(p.stock)} {p.unit}
+                {p.name} · {cantidadConUnidad(p.stock, p.unit)}
               </option>
             ))}
           </Select>
           {producto && (
             <p className="mt-1 text-xs text-slate-500">
-              Te quedan {formatQuantity(producto.stock)} {producto.unit} · te costó{' '}
+              Te quedan {cantidadConUnidad(producto.stock, producto.unit)} · te costó{' '}
               {formatMoney(producto.costPrice, currency)} por {producto.unit}
             </p>
           )}
@@ -246,7 +246,7 @@ export function LossFormDialog({
             label={`Cantidad${producto ? ` (${producto.unit})` : ''}`}
             hint={
               producto && unidades > stock
-                ? `Ojo: en inventario solo quedan ${formatQuantity(stock)} ${producto.unit}`
+                ? `Ojo: en inventario solo quedan ${cantidadConUnidad(stock, producto.unit)}`
                 : undefined
             }
           >
@@ -346,7 +346,7 @@ export function LossFormDialog({
           </p>
           {producto && (
             <p className="mt-1 text-xs text-slate-400">
-              {formatQuantity(unidades)} {producto.unit} salen del inventario.
+              {cantidadConUnidad(unidades, producto.unit)} salen del inventario.
             </p>
           )}
         </div>

@@ -14,6 +14,7 @@ import {
   type ReportFilters,
   type ReportPeriod,
 } from './api';
+import { PESTANAS_INFORMES } from './pestanas';
 import { PageHeader } from '@/app/AppLayout';
 import { useAuth } from '@/features/auth/auth-context';
 import { ApiError } from '@/shared/api/client';
@@ -29,6 +30,7 @@ import { Button } from '@/shared/ui/button';
 import { Card, CardBody, CardHeader } from '@/shared/ui/card';
 import { EmptyState, ErrorMessage, Loading } from '@/shared/ui/feedback';
 import { Field, Input } from '@/shared/ui/field';
+import { PageTabs } from '@/shared/ui/page-tabs';
 import { Table, Td, Th, Tr } from '@/shared/ui/table';
 
 type Modo = ReportPeriod | 'custom';
@@ -92,6 +94,7 @@ export function ReportsPage() {
           </div>
         }
       />
+      <PageTabs label="Tipo de informe" tabs={PESTANAS_INFORMES} />
 
       <div className="space-y-4 p-4 sm:p-6">
         <Card>

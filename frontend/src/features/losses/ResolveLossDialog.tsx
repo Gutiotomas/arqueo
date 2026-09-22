@@ -17,7 +17,8 @@ import {
 } from '@/shared/api/types';
 import { cn } from '@/shared/lib/cn';
 import { formatDate, today } from '@/shared/lib/dates';
-import { formatMoney, formatQuantity, toNumber } from '@/shared/lib/money';
+import { formatMoney, toNumber } from '@/shared/lib/money';
+import { cantidadConUnidad } from '@/shared/lib/unidades';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, Textarea } from '@/shared/ui/field';
@@ -118,7 +119,7 @@ export function ResolveLossDialog({
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
           <p className="text-sm font-medium text-slate-900">{perdida.product.name}</p>
           <p className="text-xs text-slate-500">
-            {formatQuantity(perdida.quantity)} {perdida.product.unit} ·{' '}
+            {cantidadConUnidad(perdida.quantity, perdida.product.unit)} ·{' '}
             {LOSS_REASON_LABELS[perdida.reason]} · {formatDate(perdida.date)}
             {perdida.supplier ? ` · ${perdida.supplier.name}` : ''}
           </p>

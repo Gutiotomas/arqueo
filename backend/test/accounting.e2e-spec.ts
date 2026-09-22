@@ -55,7 +55,8 @@ describe('Contabilidad y compras (e2e)', () => {
         name: 'Dueña',
         email: `conta-${sufijo}@arqueo.test`,
         password: 'claveSegura1',
-      });
+      })
+      .expect(201);
     token = registro.body.accessToken;
     businessId = registro.body.user.business.id;
 

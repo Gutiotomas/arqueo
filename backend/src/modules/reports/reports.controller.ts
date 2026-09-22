@@ -3,10 +3,11 @@ import { ApiBearerAuth, ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagg
 import type { Response } from 'express';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { ReportQueryDto } from './dto/report.dto';
+import { ReportQueryDto, SupplierReportQueryDto } from './dto/report.dto';
 import { ReportsService } from './reports.service';
 import { ExcelRenderer } from './renderers/excel.renderer';
 import { PdfRenderer } from './renderers/pdf.renderer';
+import { SupplierStatementService } from './supplier-statement.service';
 
 @ApiTags('reports')
 @ApiBearerAuth()
@@ -14,6 +15,7 @@ import { PdfRenderer } from './renderers/pdf.renderer';
 export class ReportsController {
   constructor(
     private readonly reports: ReportsService,
+    private readonly proveedores: SupplierStatementService,
     private readonly pdf: PdfRenderer,
     private readonly excel: ExcelRenderer,
   ) {}
@@ -61,6 +63,50 @@ export class ReportsController {
       res,
       buffer,
       this.reports.fileName(data, 'xlsx'),
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+  }
+
+  @Get('supplier/preview')
+  @ApiOperation({
+    summary: 'Estado de cuenta de un proveedor en JSON: compras, abonos y lo que se le debe',
+  })
+  supplierPreview(
+    @CurrentUser('businessId') businessId: string,
+    @Query() query: SupplierReportQueryDto,
+  ) {
+    return this.proveedores.build(businessId, query.supplierId, query);
+  }
+
+  @Get('supplier/pdf')
+  @ApiOperation({ summary: 'Estado de cuenta de un proveedor en PDF' })
+  @ApiProduces('application/pdf')
+  async supplierPdf(
+    @CurrentUser('businessId') businessId: string,
+    @Query() query: SupplierReportQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const data = await this.proveedores.build(businessId, query.supplierId, query);
+    const buffer = await this.pdf.renderSupplier(data);
+
+    this.enviar(res, buffer, this.proveedores.fileName(data, 'pdf'), 'application/pdf');
+  }
+
+  @Get('supplier/xlsx')
+  @ApiOperation({ summary: 'Estado de cuenta de un proveedor en Excel' })
+  @ApiProduces('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  async supplierExcel(
+    @CurrentUser('businessId') businessId: string,
+    @Query() query: SupplierReportQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const data = await this.proveedores.build(businessId, query.supplierId, query);
+    const buffer = await this.excel.renderSupplier(data);
+
+    this.enviar(
+      res,
+      buffer,
+      this.proveedores.fileName(data, 'xlsx'),
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
   }

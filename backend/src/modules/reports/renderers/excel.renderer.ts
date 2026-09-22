@@ -3,6 +3,7 @@ import { Workbook, type Worksheet } from 'exceljs';
 
 import { excelNumberFormat } from '../../../common/utils/format';
 import type { ReportData } from '../reports.service';
+import type { SupplierStatement } from '../supplier-statement.service';
 
 const AZUL = 'FF1E6091';
 const GRIS = 'FFF1F5F9';
@@ -249,6 +250,118 @@ export class ExcelRenderer {
     }
 
     this.formatearColumnas(hoja, [2, 3, 4, 5], formato);
+  }
+
+  /** Estado de cuenta de un proveedor: resumen, compras, abonos y lo pendiente. */
+  async renderSupplier(data: SupplierStatement): Promise<Buffer> {
+    const libro = new Workbook();
+    libro.creator = 'Arqueo';
+    libro.created = new Date(data.generatedAt);
+    const formato = excelNumberFormat(data.business.currency);
+    const resumen = data.summary;
+
+    const hoja = libro.addWorksheet('Resumen');
+    hoja.columns = [{ width: 34 }, { width: 18 }];
+    hoja.addRow([data.supplier.name]).font = { size: 16, bold: true };
+    hoja.addRow([`Estado de cuenta · ${data.period.label}`]).font = {
+      color: { argb: 'FF6B7280' },
+    };
+    hoja.addRow([data.business.name]).font = { color: { argb: 'FF6B7280' } };
+    hoja.addRow([]);
+
+    this.titulo(hoja, 'Estado de cuenta del periodo');
+    const extracto: [string, string, boolean][] = [
+      ['Saldo al empezar', resumen.openingBalance, false],
+      [`Compras (${resumen.purchasesCount})`, resumen.purchased, false],
+      [`Abonos (${resumen.paymentsCount})`, `-${resumen.paid}`, false],
+      ['SALDO AL FINAL', resumen.closingBalance, true],
+    ];
+    for (const [etiqueta, valor, destacar] of extracto) {
+      const fila = hoja.addRow([etiqueta, Number(valor)]);
+      fila.getCell(2).numFmt = formato;
+      fila.font = { bold: destacar };
+    }
+    hoja.addRow([]);
+
+    this.titulo(hoja, 'A día de hoy');
+    for (const [etiqueta, valor] of [
+      ['Le debes', resumen.currentBalance],
+      ['De eso, ya vencido', resumen.overdue],
+    ] as const) {
+      hoja.addRow([etiqueta, Number(valor)]).getCell(2).numFmt = formato;
+    }
+
+    const compras = libro.addWorksheet('Compras');
+    compras.columns = [
+      { header: 'Fecha', key: 'date', width: 12 },
+      { header: 'Detalle', key: 'detail', width: 44 },
+      { header: 'Total', key: 'total', width: 15 },
+      { header: 'Abonado', key: 'paid', width: 15 },
+      { header: 'Saldo hoy', key: 'balance', width: 15 },
+      { header: 'Vence', key: 'dueDate', width: 12 },
+    ];
+    this.estiloCabecera(compras);
+    for (const compra of data.purchases) {
+      compras.addRow({
+        date: compra.date,
+        detail: compra.detail,
+        total: Number(compra.total),
+        paid: Number(compra.paid),
+        balance: Number(compra.balance),
+        dueDate: compra.dueDate ?? '',
+      });
+    }
+    this.formatearColumnas(compras, [3, 4, 5], formato);
+    this.filaTotales(compras, ['C', 'D', 'E'], formato);
+
+    const abonos = libro.addWorksheet('Abonos');
+    abonos.columns = [
+      { header: 'Fecha', key: 'date', width: 12 },
+      { header: 'A qué se abonó', key: 'purchase', width: 34 },
+      { header: 'Forma de pago', key: 'paymentMethod', width: 16 },
+      { header: 'Importe', key: 'amount', width: 15 },
+      { header: 'Notas', key: 'notes', width: 30 },
+    ];
+    this.estiloCabecera(abonos);
+    for (const abono of data.payments) {
+      abonos.addRow({
+        date: abono.date,
+        purchase: abono.purchase,
+        paymentMethod: abono.paymentMethod,
+        amount: Number(abono.amount),
+        notes: abono.notes ?? '',
+      });
+    }
+    this.formatearColumnas(abonos, [4], formato);
+    this.filaTotales(abonos, ['D'], formato);
+
+    const pendiente = libro.addWorksheet('Pendiente');
+    pendiente.columns = [
+      { header: 'Fecha', key: 'date', width: 12 },
+      { header: 'Detalle', key: 'detail', width: 44 },
+      { header: 'Total', key: 'total', width: 15 },
+      { header: 'Abonado', key: 'paid', width: 15 },
+      { header: 'Saldo', key: 'balance', width: 15 },
+      { header: 'Vence', key: 'dueDate', width: 12 },
+      { header: 'Días vencida', key: 'daysOverdue', width: 13 },
+    ];
+    this.estiloCabecera(pendiente);
+    for (const compra of data.pending) {
+      pendiente.addRow({
+        date: compra.date,
+        detail: compra.detail,
+        total: Number(compra.total),
+        paid: Number(compra.paid),
+        balance: Number(compra.balance),
+        dueDate: compra.dueDate ?? '',
+        daysOverdue: compra.daysOverdue || '',
+      });
+    }
+    this.formatearColumnas(pendiente, [3, 4, 5], formato);
+    this.filaTotales(pendiente, ['C', 'D', 'E'], formato);
+
+    const buffer = await libro.xlsx.writeBuffer();
+    return Buffer.from(buffer);
   }
 
   // ------------------------------------------------------------------

@@ -1,5 +1,7 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, Matches } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsIn, IsOptional, IsUUID, Matches } from 'class-validator';
+
+import { DateRangeQueryDto } from '../../../common/dto/date-range.dto';
 
 export class ReportQueryDto {
   @ApiPropertyOptional({
@@ -27,4 +29,11 @@ export class ReportQueryDto {
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'to debe tener formato YYYY-MM-DD' })
   to?: string;
+}
+
+/** Estado de cuenta de un proveedor. Sin fechas, todo el historial. */
+export class SupplierReportQueryDto extends DateRangeQueryDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID('4', { message: 'supplierId debe ser un UUID' })
+  supplierId!: string;
 }

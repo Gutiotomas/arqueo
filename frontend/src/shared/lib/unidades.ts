@@ -1,3 +1,5 @@
+import { formatQuantity } from './money';
+
 /**
  * Cómo se comporta el campo de cantidad según la unidad del producto.
  *
@@ -42,13 +44,35 @@ const UNIDADES_ENTERAS = new Set([
   'cc',
 ]);
 
+/**
+ * La unidad es el tamaño de un paquete cuando empieza por un número:
+ * "5 uds" (paquete de cinco), "250 gr" (bolsa de 250 gramos).
+ */
+export function esPaquete(unidad: string | null | undefined): boolean {
+  return /^\d/.test((unidad ?? '').trim());
+}
+
 export function esUnidadEntera(unidad: string | null | undefined): boolean {
   // Sin producto elegido se asume que se cuenta por unidades.
   if (!unidad) return true;
   const limpia = unidad.trim().toLowerCase().replace(/\.$/, '');
-  // "500 gr" o "x6" es el tamaño de un paquete, y los paquetes se cuentan.
-  if (/^(\d|x\s*\d)/.test(limpia)) return true;
+  // Los paquetes ("500 gr", "x6") se cuentan de uno en uno.
+  if (esPaquete(limpia) || /^x\s*\d/.test(limpia)) return true;
   return UNIDADES_ENTERAS.has(limpia);
+}
+
+/**
+ * Cantidad con su unidad, lista para leer. Con paquetes, pegar los dos números
+ * no se entiende ("28 5 uds"), así que se separan: "28 × 5 uds".
+ */
+export function cantidadConUnidad(
+  cantidad: string | number | null | undefined,
+  unidad: string | null | undefined,
+): string {
+  const numero = formatQuantity(cantidad ?? 0);
+  const texto = (unidad ?? '').trim();
+  if (!texto) return numero;
+  return esPaquete(texto) ? `${numero} × ${texto}` : `${numero} ${texto}`;
 }
 
 /** Paso y mínimo del input de cantidad según la unidad del producto. */

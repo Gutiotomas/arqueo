@@ -13,8 +13,8 @@ import {
 } from '@/shared/api/types';
 import { cn } from '@/shared/lib/cn';
 import { today } from '@/shared/lib/dates';
-import { formatMoney, formatQuantity, toNumber } from '@/shared/lib/money';
-import { pasoCantidad } from '@/shared/lib/unidades';
+import { formatMoney, toNumber } from '@/shared/lib/money';
+import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
@@ -304,7 +304,7 @@ export function PurchaseFormDialog({
                         <option value="">Elige un producto</option>
                         {(productos.data?.data ?? []).map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.name} · {formatQuantity(p.stock)} {p.unit}
+                            {p.name} · {cantidadConUnidad(p.stock, p.unit)}
                           </option>
                         ))}
                       </Select>

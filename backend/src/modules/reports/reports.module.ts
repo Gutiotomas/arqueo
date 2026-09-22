@@ -6,10 +6,11 @@ import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
 import { ExcelRenderer } from './renderers/excel.renderer';
 import { PdfRenderer } from './renderers/pdf.renderer';
+import { SupplierStatementService } from './supplier-statement.service';
 
 @Module({
   imports: [DashboardModule, AccountingModule],
   controllers: [ReportsController],
-  providers: [ReportsService, PdfRenderer, ExcelRenderer],
+  providers: [ReportsService, SupplierStatementService, PdfRenderer, ExcelRenderer],
 })
 export class ReportsModule {}

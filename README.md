@@ -23,6 +23,7 @@ abrirlo a más clientes no obliga a reescribir nada.
 | **Cierre de cuenta** | El dinero de transferencias y tarjeta. Cada cierre parte del saldo real del anterior, suma lo que entró por la cuenta y resta lo que se pagó por ella, y se compara con lo que dice la app del banco. Las consignaciones y retiros entre caja y cuenta se apuntan aparte y cuadran las dos. |
 | **Dashboard** | KPIs con variación frente al periodo anterior (ventas, utilidad bruta, gastos, utilidad neta), ingresos contra gastos día a día, reparto por forma de pago, gastos por categoría, productos más vendidos con su margen y avisos de stock bajo. |
 | **Informes** | PDF y Excel del día, la semana, el mes o un rango libre. Ambos salen de la misma fuente de datos que el dashboard, así que nunca se contradicen. |
+| **Informe por proveedor** | Estado de cuenta en pantalla, PDF y Excel: saldo al empezar + compras − abonos = saldo al final, más lo que se le debe hoy y lo vencido. Se llega desde Informes o desde Compras filtrando por proveedor. |
 
 ---
 
@@ -146,7 +147,7 @@ login y `/health`. Documentación interactiva en `/docs`.
 | **bank-account** | `GET /summary` · `GET /preview?date` · `GET /closings` · `POST /closings` · `GET /closings/:id` · `PATCH /closings/:id` · `DELETE /closings/:id` · `GET /movements` · `POST /movements` · `DELETE /movements/:id` |
 | **dashboard** | `GET /dashboard/summary` · `/timeseries` · `/sales-by-payment-method` · `/expenses-by-category` · `/top-products` · `/low-stock` |
 | **accounting** | `GET /accounting/overview` · `GET /accounting/profit-and-loss` |
-| **reports** | `GET /reports/preview` · `GET /reports/pdf` · `GET /reports/xlsx` (con `period=day\|week\|month&date=` o `from=&to=`) |
+| **reports** | `GET /reports/preview` · `GET /reports/pdf` · `GET /reports/xlsx` (con `period=day\|week\|month&date=` o `from=&to=`) · `GET /reports/supplier/preview` · `GET /reports/supplier/pdf` · `GET /reports/supplier/xlsx` (con `supplierId=` y, si se quiere, `from=&to=`) |
 | **health** | `GET /health` |
 
 Los listados devuelven `{ data, meta: { page, limit, total, totalPages } }` y, en
@@ -173,6 +174,10 @@ el estado de resultados sale cuadrado sin hacer nada raro.
 3.000 y entran 10 a 4.000, el costo pasa a 3.500. Cada venta congela ese costo
 en su línea, así que el margen de hace un mes no cambia porque el proveedor
 haya subido los precios esta semana.
+
+**Las unidades que empiezan por un número son paquetes.** "5 uds" o "250 gr"
+es el tamaño de lo que se vende de a uno, así que 28 en stock se muestra como
+"28 × 5 uds" y no "28 5 uds". En esos productos la cantidad va de uno en uno.
 
 **La cuenta sigue de un día para otro; la caja no.** La caja abre cada día con
 lo que se cuenta. La cuenta no: cada cierre de cuenta parte del saldo real del

@@ -20,6 +20,7 @@ import {
 import { cn } from '@/shared/lib/cn';
 import { formatDate, startOfMonth, today } from '@/shared/lib/dates';
 import { formatMoney, formatQuantity, toNumber } from '@/shared/lib/money';
+import { cantidadConUnidad } from '@/shared/lib/unidades';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { ConfirmDialog } from '@/shared/ui/dialog';
@@ -322,7 +323,7 @@ export function LossesPage() {
                     details={[
                       {
                         label: 'Cantidad',
-                        value: `${formatQuantity(perdida.quantity)} ${perdida.product.unit}`,
+                        value: `${cantidadConUnidad(perdida.quantity, perdida.product.unit)}`,
                       },
                       {
                         label: 'Te costó',
@@ -365,7 +366,7 @@ export function LossesPage() {
                           )}
                         </Td>
                         <Td align="right" className="whitespace-nowrap">
-                          {formatQuantity(perdida.quantity)} {perdida.product.unit}
+                          {cantidadConUnidad(perdida.quantity, perdida.product.unit)}
                         </Td>
                         <Td className="text-slate-500">
                           {LOSS_REASON_LABELS[perdida.reason]}
@@ -427,7 +428,7 @@ export function LossesPage() {
         message={
           aBorrar && (aBorrar.resolution === 'FREE' || aBorrar.resolution === 'DISCOUNTED')
             ? 'Como el proveedor repuso la mercancía, el inventario no cambia: solo se borra el caso y deja de contar como pérdida.'
-            : `Las ${formatQuantity(aBorrar?.quantity)} ${aBorrar?.product.unit ?? ''} volverán al inventario y el caso dejará de contar como pérdida.`
+            : `Las ${cantidadConUnidad(aBorrar?.quantity, aBorrar?.product.unit ?? '')} volverán al inventario y el caso dejará de contar como pérdida.`
         }
         loading={borrar.isPending}
         onConfirm={confirmarBorrado}
