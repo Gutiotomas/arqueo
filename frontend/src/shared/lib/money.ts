@@ -53,6 +53,15 @@ function redondear(valor: number): string {
 }
 
 /** Cantidades de inventario: 2.500 -> "2,5" */
+/**
+ * Un importe calculado en el navegador (cantidad × precio) puede traer basura
+ * de coma flotante: 1,5 × 6.800 = 10200.000000000002. El servidor no acepta
+ * más de dos decimales, así que se redondea antes de enviarlo.
+ */
+export function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 export function formatQuantity(value: string | number | null | undefined): string {
   return new Intl.NumberFormat('es-CO', { maximumFractionDigits: 3 }).format(
     toNumber(value),

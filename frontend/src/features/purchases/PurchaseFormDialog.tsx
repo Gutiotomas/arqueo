@@ -13,7 +13,7 @@ import {
 } from '@/shared/api/types';
 import { cn } from '@/shared/lib/cn';
 import { today } from '@/shared/lib/dates';
-import { formatMoney, toNumber } from '@/shared/lib/money';
+import { formatMoney, roundMoney, toNumber } from '@/shared/lib/money';
 import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
@@ -138,8 +138,9 @@ export function PurchaseFormDialog({
   );
   const total = subtotal - Number(descuento || 0);
 
-  const pagadoAhora =
-    comoPago === 'total' ? total : comoPago === 'parcial' ? Number(abono || 0) : 0;
+  const pagadoAhora = roundMoney(
+    comoPago === 'total' ? total : comoPago === 'parcial' ? Number(abono || 0) : 0,
+  );
   const quedaADeber = total - pagadoAhora;
 
   async function guardar() {
