@@ -47,6 +47,9 @@ model Business {
   purchasePayments  PurchasePayment[]
   accountMovements  AccountMovement[]
   accountClosings   AccountClosing[]
+  customers         Customer[]
+  customerPayments  CustomerPayment[]
+  purchaseOrders    PurchaseOrder[]
 
   @@map("businesses")
 }
@@ -77,6 +80,8 @@ model User {
   purchasePayments PurchasePayment[]
   accountMovements AccountMovement[]
   accountClosings  AccountClosing[]
+  customerPayments CustomerPayment[]
+  purchaseOrders   PurchaseOrder[]
 
   @@index([businessId])
   @@map("users")
@@ -131,6 +136,8 @@ model Product {
   saleItems     SaleItem[]
   purchaseItems PurchaseItem[]
   losses        StockLoss[]
+
+  orderItems PurchaseOrderItem[]
 
   @@unique([businessId, sku])
   @@index([businessId])
@@ -187,31 +194,73 @@ enum PaymentMethod {
   CARD // tarjeta
   TRANSFER // transferencia / Nequi / Daviplata
   OTHER
+  CREDIT // fiado: el cliente se lleva el producto y paga despues
 }
 
 model Sale {
-  id            String        @id @default(uuid()) @db.Uuid
-  businessId    String        @map("business_id") @db.Uuid
-  userId        String?       @map("user_id") @db.Uuid
-  /// Fecha de negocio, sin hora: la venta pertenece a un dia.
-  date          DateTime      @db.Date
-  paymentMethod PaymentMethod @map("payment_method")
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @map("business_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  /// Fecha de negocio, sin hora: la venta pertenece a un dia. Suele ser el
+  /// registro de todo el dia: varias lineas, cada una pagada a su manera.
+  date       DateTime @db.Date
   /// Suma de los subtotales de las lineas. Siempre se calcula en el servidor.
-  total         Decimal       @db.Decimal(14, 2)
-  /// Lo que se queda el datafono si se pago con tarjeta. Se congela al
-  /// guardar la venta: cambiar el % despues no reescribe el pasado.
-  cardFee       Decimal       @default(0) @map("card_fee") @db.Decimal(14, 2)
-  notes         String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  total      Decimal  @db.Decimal(14, 2)
+  /// Lo que se queda el datafono de las lineas pagadas con tarjeta. Se
+  /// congela al guardar: cambiar el % despues no reescribe el pasado.
+  cardFee    Decimal  @default(0) @map("card_fee") @db.Decimal(14, 2)
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   business Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
   user     User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
   items    SaleItem[]
 
   @@index([businessId, date])
-  @@index([businessId, paymentMethod])
   @@map("sales")
+}
+
+/// Un cliente al que se le fia. Funciona como el cuaderno: lo que se lleva
+/// fiado suma a su cuenta y cada cobro resta, sin atar el cobro a una venta.
+model Customer {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @map("business_id") @db.Uuid
+  name       String
+  phone      String?
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  items    SaleItem[]
+  payments CustomerPayment[]
+
+  @@unique([businessId, name])
+  @@index([businessId])
+  @@map("customers")
+}
+
+/// Un cobro a un cliente que debe. Es lo que entra a la caja o a la cuenta
+/// el dia que paga, no el dia que se llevo el producto.
+model CustomerPayment {
+  id            String        @id @default(uuid()) @db.Uuid
+  businessId    String        @map("business_id") @db.Uuid
+  customerId    String        @map("customer_id") @db.Uuid
+  userId        String?       @map("user_id") @db.Uuid
+  date          DateTime      @db.Date
+  amount        Decimal       @db.Decimal(14, 2)
+  paymentMethod PaymentMethod @map("payment_method")
+  notes         String?
+  createdAt     DateTime      @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, date])
+  @@index([customerId])
+  @@map("customer_payments")
 }
 
 model SaleItem {
@@ -220,19 +269,28 @@ model SaleItem {
   /// Nulo cuando la linea es un concepto libre (un servicio, algo sin catalogar).
   productId String? @map("product_id") @db.Uuid
 
-  description String
-  quantity    Decimal @db.Decimal(12, 3)
-  unitPrice   Decimal @map("unit_price") @db.Decimal(14, 2)
+  description   String
+  quantity      Decimal       @db.Decimal(12, 3)
+  unitPrice     Decimal       @map("unit_price") @db.Decimal(14, 2)
   /// Coste unitario en el momento de la venta, para calcular margen historico.
-  unitCost    Decimal @default(0) @map("unit_cost") @db.Decimal(14, 2)
-  subtotal    Decimal @db.Decimal(14, 2)
+  unitCost      Decimal       @default(0) @map("unit_cost") @db.Decimal(14, 2)
+  subtotal      Decimal       @db.Decimal(14, 2)
+  /// Como se pago esta parte. De seis arepas, dos pueden ir en efectivo, dos
+  /// por transferencia y dos fiadas: son tres lineas del mismo producto.
+  paymentMethod PaymentMethod @map("payment_method")
+  /// A quien se le fio. Solo en las lineas CREDIT.
+  customerId    String?       @map("customer_id") @db.Uuid
+  /// Orden en que se escribieron: los ids son aleatorios y no sirven.
+  position      Int           @default(0)
 
   sale     Sale           @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product  Product?       @relation(fields: [productId], references: [id], onDelete: SetNull)
+  customer Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
   movement StockMovement?
 
   @@index([saleId])
   @@index([productId])
+  @@index([customerId])
   @@map("sale_items")
 }
 
@@ -326,13 +384,61 @@ model Supplier {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  business  Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business  Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   purchases Purchase[]
   losses    StockLoss[]
+  orders    PurchaseOrder[]
 
   @@unique([businessId, name])
   @@index([businessId])
   @@map("suppliers")
+}
+
+/// Lo que se le pide al proveedor, como la cuenta a mano: cantidad, producto,
+/// valor unitario y total. No mueve inventario ni deuda: eso pasa cuando
+/// llega la mercancia y se registra la compra.
+model PurchaseOrder {
+  id         String  @id @default(uuid()) @db.Uuid
+  businessId String  @map("business_id") @db.Uuid
+  supplierId String? @map("supplier_id") @db.Uuid
+  userId     String? @map("user_id") @db.Uuid
+
+  /// Numero correlativo por negocio: Pedido No. 12.
+  number    Int
+  date      DateTime @db.Date
+  total     Decimal  @db.Decimal(14, 2)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  supplier Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  user     User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items    PurchaseOrderItem[]
+
+  @@unique([businessId, number])
+  @@index([businessId, date])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id        String  @id @default(uuid()) @db.Uuid
+  orderId   String  @map("order_id") @db.Uuid
+  /// Nulo cuando es algo que no esta en el inventario.
+  productId String? @map("product_id") @db.Uuid
+
+  description String
+  quantity    Decimal @db.Decimal(12, 3)
+  unitPrice   Decimal @map("unit_price") @db.Decimal(14, 2)
+  subtotal    Decimal @db.Decimal(14, 2)
+  /// Orden en que se escribieron, como en la cuenta a mano.
+  position    Int     @default(0)
+
+  order   PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("purchase_order_items")
 }
 
 model Purchase {
@@ -344,6 +450,13 @@ model Purchase {
   date             DateTime  @db.Date
   /// Numero de factura o remision del proveedor.
   invoiceNumber    String?   @map("invoice_number")
+  /// Suma de las lineas, antes del descuento.
+  subtotal         Decimal   @default(0) @db.Decimal(14, 2)
+  /// Lo que el proveedor resto del total: un cruce, una devolucion, una
+  /// promocion. No toca el costo de los productos: es un ingreso aparte.
+  discount         Decimal   @default(0) @db.Decimal(14, 2)
+  discountReason   String?   @map("discount_reason")
+  /// subtotal - discount. Es lo que se le debe al proveedor.
   total            Decimal   @db.Decimal(14, 2)
   /// Suma de los abonos. Se actualiza en la misma transaccion que el abono.
   paidAmount       Decimal   @default(0) @map("paid_amount") @db.Decimal(14, 2)

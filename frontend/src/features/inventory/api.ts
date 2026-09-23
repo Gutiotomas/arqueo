@@ -5,6 +5,7 @@ import type {
   Category,
   Paginated,
   Product,
+  ProductPurchaseRef,
   StockMovement,
 } from '@/shared/api/types';
 
@@ -34,10 +35,22 @@ export interface StockInPayload {
   quantity: number;
   unitCost?: number;
   reason?: string;
+  /** La compra que se quedó corta: sube su línea, su total y su deuda. */
+  purchaseId?: string;
+}
+
+/** Dividir o reempacar: pasa mercancía de un producto a otro con su costo. */
+export interface ConvertStockPayload {
+  toProductId: string;
+  quantity: number;
+  resultingQuantity: number;
+  reason?: string;
 }
 
 export interface AdjustStockPayload {
   stock: number;
+  /** La compra mal apuntada que explica la diferencia. */
+  purchaseId?: string;
   reason?: string;
 }
 
@@ -89,6 +102,9 @@ function useInvalidarInventario() {
     cliente.invalidateQueries({ queryKey: ['products'] });
     cliente.invalidateQueries({ queryKey: ['dashboard'] });
     cliente.invalidateQueries({ queryKey: ['product-categories'] });
+    // Un ajuste puede corregir una compra, y con ella la deuda y la contabilidad.
+    cliente.invalidateQueries({ queryKey: ['purchases'] });
+    cliente.invalidateQueries({ queryKey: ['accounting'] });
   };
 }
 
@@ -123,6 +139,24 @@ export function useStockIn() {
   return useMutation({
     mutationFn: ({ id, datos }: { id: string; datos: StockInPayload }) =>
       api.post<StockResult>(`/products/${id}/stock-in`, datos),
+    onSuccess: invalidar,
+  });
+}
+
+/** Las compras en las que vino el producto, para corregirlas desde un ajuste. */
+export function useProductPurchases(id: string | null) {
+  return useQuery({
+    queryKey: ['products', 'compras', id],
+    queryFn: () => api.get<ProductPurchaseRef[]>(`/products/${id}/purchases`),
+    enabled: Boolean(id),
+  });
+}
+
+export function useConvertStock() {
+  const invalidar = useInvalidarInventario();
+  return useMutation({
+    mutationFn: ({ id, datos }: { id: string; datos: ConvertStockPayload }) =>
+      api.post<{ from: Product; to: Product }>(`/products/${id}/convert`, datos),
     onSuccess: invalidar,
   });
 }

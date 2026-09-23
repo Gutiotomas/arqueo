@@ -120,6 +120,15 @@ export class StockInDto {
   @IsString()
   @MaxLength(200)
   reason?: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Si la mercancia venia en una compra ya registrada que se quedo corta, la linea de esa compra sube y con ella su total y su deuda.',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'purchaseId debe ser un UUID' })
+  purchaseId?: string;
 }
 
 export class AdjustStockDto {
@@ -130,6 +139,40 @@ export class AdjustStockDto {
   stock!: number;
 
   @ApiPropertyOptional({ example: 'Conteo físico de inventario' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Si la diferencia viene de una compra mal apuntada, la linea de esa compra cambia con ella, y con la linea su total y su deuda. Sin esto, solo se mueve el inventario.',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'purchaseId debe ser un UUID' })
+  purchaseId?: string;
+}
+
+/** Pasar stock de un producto a otro: dividir canastas, reempacar. */
+export class ConvertStockDto {
+  @ApiProperty({ format: 'uuid', description: 'Producto al que pasa la mercancia' })
+  @IsUUID('4', { message: 'toProductId debe ser un UUID' })
+  toProductId!: string;
+
+  @ApiProperty({ example: 2, description: 'Lo que sale de este producto' })
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001, { message: 'La cantidad que sale debe ser mayor que cero' })
+  quantity!: number;
+
+  @ApiProperty({ example: 4, description: 'Lo que entra al otro producto' })
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001, { message: 'La cantidad que entra debe ser mayor que cero' })
+  resultingQuantity!: number;
+
+  @ApiPropertyOptional({ example: 'Se dividieron dos canastas' })
   @IsOptional()
   @IsString()
   @MaxLength(200)

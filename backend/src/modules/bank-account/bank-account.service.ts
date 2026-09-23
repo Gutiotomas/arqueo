@@ -245,6 +245,7 @@ export class BankAccountService {
    *
    *   + transferencias recibidas por ventas
    *   + ventas con tarjeta, menos lo que se queda el datafono
+   *   + cobros de fiados por transferencia o tarjeta
    *   + efectivo consignado desde la caja y otros ingresos
    *   − gastos y abonos a proveedores pagados por transferencia o tarjeta
    *   − reposiciones de mercancia danada pagadas igual
@@ -253,16 +254,27 @@ export class BankAccountService {
   private async flujos(businessId: string, tramo: Tramo) {
     const fechas = { gt: tramo.desde, lte: tramo.hasta };
 
-    const [transferencias, tarjeta, gastos, abonos, reposiciones, movimientos] =
+    const [transferencias, tarjeta, comisiones, cobros, gastos, abonos, reposiciones, movimientos] =
       await Promise.all([
-        this.prisma.sale.aggregate({
-          where: { businessId, date: fechas, paymentMethod: 'TRANSFER' },
-          _sum: { total: true },
+        this.prisma.saleItem.aggregate({
+          where: { paymentMethod: 'TRANSFER', sale: { businessId, date: fechas } },
+          _sum: { subtotal: true },
           _count: true,
         }),
+        this.prisma.saleItem.aggregate({
+          where: { paymentMethod: 'CARD', sale: { businessId, date: fechas } },
+          _sum: { subtotal: true },
+          _count: true,
+        }),
+        // La comision del datafono se guarda en la venta, no en la linea.
         this.prisma.sale.aggregate({
-          where: { businessId, date: fechas, paymentMethod: 'CARD' },
-          _sum: { total: true, cardFee: true },
+          where: { businessId, date: fechas },
+          _sum: { cardFee: true },
+        }),
+        // Lo fiado entra el dia que el cliente paga.
+        this.prisma.customerPayment.aggregate({
+          where: { businessId, date: fechas, paymentMethod: { in: MEDIOS_DE_CUENTA } },
+          _sum: { amount: true },
           _count: true,
         }),
         this.prisma.expense.aggregate({
@@ -298,11 +310,13 @@ export class BankAccountService {
     );
 
     const flujos = {
-      transferSales: transferencias._sum.total ?? CERO,
+      transferSales: transferencias._sum.subtotal ?? CERO,
       transferSalesCount: transferencias._count,
-      cardSales: tarjeta._sum.total ?? CERO,
-      cardFees: tarjeta._sum.cardFee ?? CERO,
+      cardSales: tarjeta._sum.subtotal ?? CERO,
+      cardFees: comisiones._sum.cardFee ?? CERO,
       cardSalesCount: tarjeta._count,
+      collections: cobros._sum.amount ?? CERO,
+      collectionsCount: cobros._count,
       expenses: gastos._sum.amount ?? CERO,
       expensesCount: gastos._count,
       supplierPayments: (abonos._sum.amount ?? CERO).plus(
@@ -319,6 +333,7 @@ export class BankAccountService {
       flujos.transferSales
         .plus(flujos.cardSales)
         .minus(flujos.cardFees)
+        .plus(flujos.collections)
         .plus(flujos.cashDeposits)
         .plus(flujos.otherIn)
         .minus(flujos.expenses)
@@ -337,6 +352,8 @@ export class BankAccountService {
       cardSales: flujos.cardSales.toFixed(2),
       cardFees: flujos.cardFees.toFixed(2),
       cardSalesCount: flujos.cardSalesCount,
+      collections: flujos.collections.toFixed(2),
+      collectionsCount: flujos.collectionsCount,
       expenses: flujos.expenses.toFixed(2),
       expensesCount: flujos.expensesCount,
       supplierPayments: flujos.supplierPayments.toFixed(2),

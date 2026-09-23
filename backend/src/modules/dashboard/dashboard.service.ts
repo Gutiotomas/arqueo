@@ -110,7 +110,7 @@ export class DashboardService {
       },
     };
 
-    const [ventas, gastos, costo, merma] = await Promise.all([
+    const [ventas, gastos, costo, merma, descuentos] = await Promise.all([
       this.prisma.sale.aggregate({
         where,
         _sum: { total: true, cardFee: true },
@@ -123,6 +123,7 @@ export class DashboardService {
       }),
       this.costoDeLoVendido(businessId, range),
       this.prisma.stockLoss.aggregate({ where, _sum: { lossAmount: true } }),
+      this.prisma.purchase.aggregate({ where, _sum: { discount: true } }),
     ]);
 
     const sales = money(ventas._sum.total ?? 0);
@@ -140,7 +141,14 @@ export class DashboardService {
       cogs: costo,
       grossProfit,
       losses,
-      profit: money(grossProfit.minus(losses).minus(expenses).minus(cardFees)),
+      // Los descuentos de proveedores suman: no bajan el costo, son ingreso.
+      profit: money(
+        grossProfit
+          .minus(losses)
+          .minus(expenses)
+          .minus(cardFees)
+          .plus(descuentos._sum.discount ?? 0),
+      ),
       salesCount: ventas._count,
       expensesCount: gastos._count,
       averageTicket: ventas._count
@@ -223,27 +231,31 @@ export class DashboardService {
 
   /** Reparto de ventas por forma de pago (el donut del dashboard). */
   async salesByPaymentMethod(businessId: string, range: DateRange) {
-    const rows = await this.prisma.sale.groupBy({
+    // La forma de pago va en cada linea: una venta puede ser mitad efectivo,
+    // mitad fiada.
+    const rows = await this.prisma.saleItem.groupBy({
       by: ['paymentMethod'],
       where: {
-        businessId,
-        date: {
-          gte: parseBusinessDate(range.from),
-          lte: parseBusinessDate(range.to),
+        sale: {
+          businessId,
+          date: {
+            gte: parseBusinessDate(range.from),
+            lte: parseBusinessDate(range.to),
+          },
         },
       },
-      _sum: { total: true },
+      _sum: { subtotal: true },
       _count: true,
     });
 
     const total = rows.reduce(
-      (acc, row) => acc.plus(row._sum.total ?? 0),
+      (acc, row) => acc.plus(row._sum.subtotal ?? 0),
       new Prisma.Decimal(0),
     );
 
     return rows
       .map((row) => {
-        const amount = money(row._sum.total ?? 0);
+        const amount = money(row._sum.subtotal ?? 0);
         return {
           paymentMethod: row.paymentMethod as PaymentMethod,
           total: amount.toFixed(2),

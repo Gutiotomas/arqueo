@@ -75,6 +75,7 @@ export function CashPage() {
 
   const ventasEfectivo = toNumber(preview.data?.cashSales);
   const gastosEfectivo = toNumber(preview.data?.cashExpenses);
+  const cobrosEfectivo = toNumber(preview.data?.cashCollections);
   const abonosEfectivo = toNumber(preview.data?.cashSupplierPayments);
   const consignado = toNumber(preview.data?.depositedToAccount);
   const traido = toNumber(preview.data?.withdrawnFromAccount);
@@ -191,6 +192,19 @@ export function CashPage() {
                     )}
                     valor={`− ${formatMoney(gastosEfectivo, currency)}`}
                   />
+                  {cobrosEfectivo > 0 && (
+                    <LineaDesglose
+                      icono={<HandCoins className="h-4 w-4" />}
+                      tono="verde"
+                      etiqueta="Cobros de fiados"
+                      detalle={contar(
+                        preview.data?.cashCollectionsCount ?? 0,
+                        'cobro en efectivo',
+                        'cobros en efectivo',
+                      )}
+                      valor={`+ ${formatMoney(cobrosEfectivo, currency)}`}
+                    />
+                  )}
                   {abonosEfectivo > 0 && (
                     <LineaDesglose
                       icono={<HandCoins className="h-4 w-4" />}

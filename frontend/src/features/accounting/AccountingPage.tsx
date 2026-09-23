@@ -71,6 +71,18 @@ export function AccountingPage() {
                     />
                     <FilaPatrimonio
                       icono={<HandCoins className="h-5 w-5" />}
+                      tono="azul"
+                      titulo="Fiados por cobrar"
+                      detalle={
+                        Number(conta.data.customerDebt) > 0
+                          ? 'Lo que te deben los clientes'
+                          : 'Nadie te debe nada'
+                      }
+                      valor={formatMoney(conta.data.customerDebt, currency)}
+                      enlace="/fiados"
+                    />
+                    <FilaPatrimonio
+                      icono={<HandCoins className="h-5 w-5" />}
                       tono={Number(conta.data.supplierDebt) > 0 ? 'rojo' : 'verde'}
                       titulo="Deuda con proveedores"
                       detalle={
@@ -84,9 +96,9 @@ export function AccountingPage() {
 
                     <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2.5">
                       <span className="text-sm text-slate-600">
-                        Inventario menos deuda
+                        Inventario y fiados menos deuda
                         <span className="block text-xs text-slate-500">
-                          Si es negativo, debes más de lo que tienes en mercancía
+                          Si es negativo, debes más de lo que tienes en mercancía y por cobrar
                         </span>
                       </span>
                       <span
@@ -287,6 +299,14 @@ function EstadoDeResultados({
             tono="resta"
           />
         )}
+        {Number(datos.supplierDiscounts) > 0 && (
+          <Linea
+            titulo="Descuentos de proveedores"
+            detalle="Cruces y rebajas sobre el total de las compras"
+            valor={`+ ${formatMoney(datos.supplierDiscounts, currency)}`}
+            tono="suma"
+          />
+        )}
         <Linea
           titulo="Utilidad neta"
           detalle={`${datos.netMargin}% sobre las ventas`}
@@ -312,11 +332,12 @@ function Linea({
   titulo: string;
   detalle?: string;
   valor: string;
-  tono?: 'normal' | 'resta' | 'subtotal' | 'total' | 'totalNegativo';
+  tono?: 'normal' | 'resta' | 'suma' | 'subtotal' | 'total' | 'totalNegativo';
 }) {
   const estilos = {
     normal: { fila: '', titulo: 'text-slate-700', valor: 'text-slate-900' },
     resta: { fila: '', titulo: 'text-slate-600', valor: 'text-red-700' },
+    suma: { fila: '', titulo: 'text-slate-600', valor: 'text-emerald-700' },
     subtotal: {
       fila: 'border-t border-slate-200 pt-2 mt-1',
       titulo: 'font-medium text-slate-900',

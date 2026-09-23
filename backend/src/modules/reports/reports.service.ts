@@ -32,6 +32,8 @@ export interface ReportData {
     expenses: string;
     /** Lo que se quedo el datafono de las ventas con tarjeta. */
     cardFees: string;
+    /** Cruces y rebajas de los proveedores sobre el total de las compras. */
+    supplierDiscounts: string;
     /** Utilidad neta: bruta menos gastos de operar. */
     profit: string;
     salesCount: number;
@@ -51,10 +53,18 @@ export interface ReportData {
   topProducts: { name: string; quantity: string; revenue: string; margin: string }[];
   sales: {
     date: string;
+    /** Las formas de pago de sus lineas: "Efectivo" o "Efectivo, Fiado". */
     paymentMethod: string;
     total: string;
     notes: string | null;
-    items: { description: string; quantity: string; unitPrice: string; subtotal: string }[];
+    items: {
+      description: string;
+      quantity: string;
+      unitPrice: string;
+      subtotal: string;
+      paymentMethod: string;
+      customer: string | null;
+    }[];
   }[];
   expenses: {
     date: string;
@@ -77,6 +87,7 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CARD: 'Tarjeta',
   TRANSFER: 'Transferencia',
   OTHER: 'Otro',
+  CREDIT: 'Fiado',
 };
 
 @Injectable()
@@ -152,7 +163,7 @@ export class ReportsService {
       this.dashboard.topProducts(businessId, range, 10),
       this.prisma.sale.findMany({
         where: { businessId, date: { gte: day(range.from), lte: day(range.to) } },
-        include: { items: true },
+        include: { items: { include: { customer: { select: { name: true } } } } },
         orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
       }),
       this.prisma.expense.findMany({
@@ -179,6 +190,7 @@ export class ReportsService {
         lossesCount: contabilidad.lossesCount,
         expenses: contabilidad.operatingExpenses,
         cardFees: contabilidad.cardFees,
+        supplierDiscounts: contabilidad.supplierDiscounts,
         profit: contabilidad.netProfit,
         salesCount: summary.salesCount,
         expensesCount: summary.expensesCount,
@@ -216,8 +228,9 @@ export class ReportsService {
       })),
       sales: ventas.map((venta) => ({
         date: iso(venta.date),
-        paymentMethod:
-          PAYMENT_METHOD_LABELS[venta.paymentMethod] ?? venta.paymentMethod,
+        paymentMethod: [...new Set(venta.items.map((item) => item.paymentMethod))]
+          .map((metodo) => PAYMENT_METHOD_LABELS[metodo] ?? metodo)
+          .join(', '),
         total: money(venta.total).toFixed(2),
         notes: venta.notes,
         items: venta.items.map((item) => ({
@@ -225,6 +238,8 @@ export class ReportsService {
           quantity: item.quantity.toFixed(3),
           unitPrice: money(item.unitPrice).toFixed(2),
           subtotal: money(item.subtotal).toFixed(2),
+          paymentMethod: PAYMENT_METHOD_LABELS[item.paymentMethod] ?? item.paymentMethod,
+          customer: item.customer?.name ?? null,
         })),
       })),
       expenses: gastos.map((gasto) => ({

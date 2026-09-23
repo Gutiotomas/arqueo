@@ -1,5 +1,6 @@
 import { FileSpreadsheet, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { useSearchParams } from 'react-router';
 
 import { useDeleteSale, useSales, type SaleFilters } from './api';
 import { SaleFormDialog } from './SaleFormDialog';
@@ -7,13 +8,13 @@ import { PageHeader } from '@/app/AppLayout';
 import { useAuth } from '@/features/auth/auth-context';
 import { downloadFile } from '@/shared/api/client';
 import {
-  PAYMENT_METHODS,
+  SALE_PAYMENT_METHODS,
   PAYMENT_METHOD_LABELS,
   type PaymentMethod,
   type Sale,
 } from '@/shared/api/types';
 import { formatDate, startOfMonth, today } from '@/shared/lib/dates';
-import { formatMoney, formatQuantity } from '@/shared/lib/money';
+import { formatMoney, formatQuantity, toNumber } from '@/shared/lib/money';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { ConfirmDialog } from '@/shared/ui/dialog';
@@ -36,6 +37,38 @@ function resumenProductos(venta: Sale): string {
     .join(', ');
 }
 
+/** Cómo se pagó la venta, línea a línea: "Efectivo $6.000 · Fiado a Marta $6.000". */
+function EstadoPago({ venta, currency }: { venta: Sale; currency: string }) {
+  const porMetodo = new Map<PaymentMethod, number>();
+  const fiadoA = new Map<string, number>();
+  for (const item of venta.items) {
+    porMetodo.set(item.paymentMethod, (porMetodo.get(item.paymentMethod) ?? 0) + toNumber(item.subtotal));
+    if (item.paymentMethod === 'CREDIT') {
+      const nombre = item.customer?.name ?? 'Sin nombre';
+      fiadoA.set(nombre, (fiadoA.get(nombre) ?? 0) + toNumber(item.subtotal));
+    }
+  }
+  const unica = porMetodo.size === 1;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {[...porMetodo.entries()].map(([metodo, importe]) => (
+        <Badge
+          key={metodo}
+          tone={metodo === 'CREDIT' ? 'warning' : metodo === 'CASH' ? 'success' : 'info'}
+        >
+          {PAYMENT_METHOD_LABELS[metodo]}
+          {!unica && <span className="tabular ml-1">{formatMoney(importe, currency)}</span>}
+        </Badge>
+      ))}
+      {fiadoA.size > 0 && (
+        <span className="text-xs text-slate-500">
+          a {[...fiadoA.keys()].join(', ')}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function SalesPage() {
   const { currency } = useAuth();
   const [filtros, setFiltros] = useState<SaleFilters>({
@@ -46,9 +79,12 @@ export function SalesPage() {
     page: 1,
     limit: 20,
   });
+  // Desde Fiados se llega con ?nueva=fiado: el formulario abre ya en "Fiado".
+  const [parametros, setParametros] = useSearchParams();
   const [formulario, setFormulario] = useState<{ abierto: boolean; venta: Sale | null }>(
-    { abierto: false, venta: null },
+    { abierto: parametros.get('nueva') === 'fiado', venta: null },
   );
+  const formaInicial: PaymentMethod = parametros.get('nueva') === 'fiado' ? 'CREDIT' : 'CASH';
   const [aBorrar, setABorrar] = useState<Sale | null>(null);
   const [descargando, setDescargando] = useState(false);
 
@@ -141,7 +177,7 @@ export function SalesPage() {
             aria-label="Forma de pago"
           >
             <option value="">Todas las formas de pago</option>
-            {PAYMENT_METHODS.map((metodo) => (
+            {SALE_PAYMENT_METHODS.map((metodo) => (
               <option key={metodo.value} value={metodo.value}>
                 {metodo.label}
               </option>
@@ -198,11 +234,7 @@ export function SalesPage() {
                       </>
                     }
                     amount={formatMoney(venta.total, currency)}
-                    badge={
-                      <Badge tone={venta.paymentMethod === 'CASH' ? 'success' : 'info'}>
-                        {PAYMENT_METHOD_LABELS[venta.paymentMethod]}
-                      </Badge>
-                    }
+                    badge={<EstadoPago venta={venta} currency={currency} />}
                     actions={acciones(venta)}
                   />
                 ))}
@@ -236,6 +268,11 @@ export function SalesPage() {
                                     (concepto libre)
                                   </span>
                                 )}
+                                {item.paymentMethod === 'CREDIT' && (
+                                  <span className="ml-1 text-xs text-amber-700">
+                                    (fiado a {item.customer?.name ?? 'sin nombre'})
+                                  </span>
+                                )}
                               </li>
                             ))}
                           </ul>
@@ -244,9 +281,7 @@ export function SalesPage() {
                           )}
                         </Td>
                         <Td>
-                          <Badge tone={venta.paymentMethod === 'CASH' ? 'success' : 'info'}>
-                            {PAYMENT_METHOD_LABELS[venta.paymentMethod]}
-                          </Badge>
+                          <EstadoPago venta={venta} currency={currency} />
                         </Td>
                         <Td align="right" className="font-medium text-slate-900">
                           {formatMoney(venta.total, currency)}
@@ -274,9 +309,12 @@ export function SalesPage() {
       <SaleFormDialog
         open={formulario.abierto}
         venta={formulario.venta}
-        onOpenChange={(abierto) =>
-          setFormulario((previo) => ({ ...previo, abierto }))
-        }
+        formaDePagoInicial={formaInicial}
+        onOpenChange={(abierto) => {
+          setFormulario((previo) => ({ ...previo, abierto }));
+          // Al cerrar, el enlace desde Fiados ya cumplió su función.
+          if (!abierto && parametros.has('nueva')) setParametros({});
+        }}
       />
 
       <ConfirmDialog

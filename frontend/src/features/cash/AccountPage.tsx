@@ -616,6 +616,14 @@ function DesgloseCuenta({
   const tarjetaNeta = toNumber(m.cardSales) - toNumber(m.cardFees);
   const lineas = [
     {
+      mostrar: toNumber(m.collections) > 0,
+      icono: <HandCoins className="h-4 w-4" />,
+      tono: 'verde' as const,
+      etiqueta: 'Cobros de fiados',
+      detalle: contar(m.collectionsCount, 'cobro por transferencia o tarjeta', 'cobros por transferencia o tarjeta'),
+      valor: `+ ${formatMoney(m.collections, currency)}`,
+    },
+    {
       mostrar: toNumber(m.cashDeposits) > 0,
       icono: <Landmark className="h-4 w-4" />,
       tono: 'verde' as const,

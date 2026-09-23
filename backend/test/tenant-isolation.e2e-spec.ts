@@ -82,8 +82,7 @@ describe('Aislamiento entre empresas (e2e)', () => {
       .set('Authorization', `Bearer ${tokenB}`)
       .send({
         date: hoy,
-        paymentMethod: 'CASH',
-        items: [{ productId: productoDeB, quantity: 2, unitPrice: 10000 }],
+        items: [{ productId: productoDeB, quantity: 2, unitPrice: 10000, paymentMethod: 'CASH' }],
       });
     ventaDeB = venta.body.id;
   });
@@ -147,7 +146,7 @@ describe('Aislamiento entre empresas (e2e)', () => {
         .send({
           date: hoy,
           paymentMethod: 'CASH',
-          items: [{ productId: productoDeB, quantity: 1, unitPrice: 10000 }],
+          items: [{ productId: productoDeB, quantity: 1, unitPrice: 10000, paymentMethod: 'CASH' }],
         }),
     ).expect(400);
 

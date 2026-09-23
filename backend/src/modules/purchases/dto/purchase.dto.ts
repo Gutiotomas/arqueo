@@ -101,6 +101,23 @@ export class CreatePurchaseDto {
   items!: PurchaseItemDto[];
 
   @ApiPropertyOptional({
+    example: 15000,
+    description:
+      'Lo que el proveedor resto del total (un cruce, una devolucion, una promocion). No cambia el costo de los productos: cuenta como ingreso aparte.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  discount?: number;
+
+  @ApiPropertyOptional({ example: 'Cruce por las gaseosas vencidas' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  discountReason?: string;
+
+  @ApiPropertyOptional({
     type: PurchasePaymentDto,
     description: 'Lo que pagas en el momento. Si no mandas nada, queda a deber.',
   })

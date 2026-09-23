@@ -245,6 +245,7 @@ async function main(): Promise<void> {
             date: dia,
             invoiceNumber: `FV-${entre(10000, 99999)}`,
             dueDate: new Date(dia.getTime() + 30 * 86_400_000),
+            subtotal: totalCompra,
             total: totalCompra,
             paidAmount: abonado,
             items: { createMany: { data: lineas } },
@@ -312,6 +313,8 @@ async function main(): Promise<void> {
 
     for (let i = 0; i < ventasDelDia; i++) {
       const lineas = entre(1, 3);
+      // Todas las lineas de la venta con la misma forma de pago: la demo no fia.
+      const formaDePago = elegir(FORMAS_DE_PAGO);
       const items: Prisma.SaleItemCreateManySaleInput[] = [];
       let total = new Prisma.Decimal(0);
 
@@ -329,6 +332,7 @@ async function main(): Promise<void> {
         const subtotal = precio.times(cantidad);
 
         items.push({
+          paymentMethod: formaDePago,
           productId: producto.id,
           description: producto.name,
           quantity: cantidad,
@@ -349,6 +353,7 @@ async function main(): Promise<void> {
       if (aleatorio() < 0.1) {
         const importe = new Prisma.Decimal(entre(5, 30) * 1000);
         items.push({
+          paymentMethod: formaDePago,
           productId: null,
           description: elegir([
             'Recarga de celular',
@@ -371,7 +376,6 @@ async function main(): Promise<void> {
           businessId,
           userId,
           date: dia,
-          paymentMethod: elegir(FORMAS_DE_PAGO),
           total,
           items: { createMany: { data: items } },
         },
@@ -618,9 +622,9 @@ async function main(): Promise<void> {
     const dia = fecha(diasAtras);
 
     const [ventasEfectivo, gastosEfectivo] = await Promise.all([
-      prisma.sale.aggregate({
-        where: { businessId, date: dia, paymentMethod: 'CASH' },
-        _sum: { total: true },
+      prisma.saleItem.aggregate({
+        where: { paymentMethod: 'CASH', sale: { businessId, date: dia } },
+        _sum: { subtotal: true },
       }),
       prisma.expense.aggregate({
         where: { businessId, date: dia, paymentMethod: 'CASH' },
@@ -630,7 +634,7 @@ async function main(): Promise<void> {
 
     const apertura = new Prisma.Decimal(100000);
     const esperado = apertura
-      .plus(ventasEfectivo._sum.total ?? 0)
+      .plus(ventasEfectivo._sum.subtotal ?? 0)
       .minus(gastosEfectivo._sum.amount ?? 0);
     // Casi siempre cuadra; de vez en cuando falta o sobra algo de suelto.
     const descuadre = aleatorio() < 0.3 ? new Prisma.Decimal(entre(-5000, 5000)) : new Prisma.Decimal(0);

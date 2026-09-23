@@ -32,7 +32,7 @@ import { EmptyState } from '@/shared/ui/feedback';
  */
 const COLOR_VENTAS = '#1baf7a';
 const COLOR_GASTOS = '#eb6834';
-const COLORES_PAGO = ['#2a78d6', '#eb6834', '#1baf7a', '#94a3b8'];
+const COLORES_PAGO = ['#2a78d6', '#eb6834', '#1baf7a', '#94a3b8', '#b45309'];
 const EJE = '#94a3b8';
 const REJILLA = '#e2e8f0';
 

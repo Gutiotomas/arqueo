@@ -44,6 +44,9 @@ export interface PurchasePayload {
   dueDate?: string;
   notes?: string;
   items: { productId: string; quantity: number; unitCost: number }[];
+  /** Lo que el proveedor restó del total: un cruce, una devolución... */
+  discount?: number;
+  discountReason?: string;
   /** Lo que se paga en el momento; sin esto la compra queda a deber entera. */
   initialPayment?: PaymentPayload;
 }

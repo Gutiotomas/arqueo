@@ -22,6 +22,7 @@ import {
 } from './api';
 import { OpeningBalanceDialog } from './OpeningBalanceDialog';
 import { PaymentDialog } from './PaymentDialog';
+import { PESTANAS_COMPRAS } from './pestanas';
 import { PurchaseFormDialog } from './PurchaseFormDialog';
 import { PageHeader } from '@/app/AppLayout';
 import { useAuth } from '@/features/auth/auth-context';
@@ -48,6 +49,7 @@ import {
 import { Select } from '@/shared/ui/field';
 import { MobileCard, MobileList, TableWrapper } from '@/shared/ui/mobile-list';
 import { RangePicker } from '@/shared/ui/range-picker';
+import { PageTabs } from '@/shared/ui/page-tabs';
 import { Table, Td, Th, Tr } from '@/shared/ui/table';
 
 const ESTADOS: { value: PurchaseStatusFilter | ''; label: string }[] = [
@@ -124,6 +126,21 @@ function DetalleCompra({
                 </span>
               </li>
             ))}
+            {toNumber(compra.discount) > 0 && (
+              <li className="flex justify-between gap-3 border-t border-slate-200 pt-1.5 text-sm">
+                <span className="min-w-0 text-emerald-700">
+                  Descuento del proveedor
+                  {compra.discountReason && (
+                    <span className="block text-xs text-slate-400">
+                      {compra.discountReason}
+                    </span>
+                  )}
+                </span>
+                <span className="tabular shrink-0 font-medium text-emerald-700">
+                  − {formatMoney(compra.discount, currency)}
+                </span>
+              </li>
+            )}
           </ul>
         </div>
       )}
@@ -310,6 +327,7 @@ export function PurchasesPage() {
           </Button>
         }
       />
+      <PageTabs label="Compras o pedidos" tabs={PESTANAS_COMPRAS} />
 
       <div className="space-y-4 p-4 sm:p-6">
         {/* Lo primero que quiere saber el dueño: cuánto debe. */}

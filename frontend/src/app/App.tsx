@@ -31,6 +31,12 @@ const InventoryPage = lazy(() =>
     default: m.InventoryPage,
   })),
 );
+const OrdersPage = lazy(() =>
+  import('@/features/purchases/OrdersPage').then((m) => ({ default: m.OrdersPage })),
+);
+const CreditPage = lazy(() =>
+  import('@/features/credit/CreditPage').then((m) => ({ default: m.CreditPage })),
+);
 const PurchasesPage = lazy(() =>
   import('@/features/purchases/PurchasesPage').then((m) => ({
     default: m.PurchasesPage,
@@ -114,6 +120,8 @@ export function App() {
                 <Route path="/gastos" element={<ExpensesPage />} />
                 <Route path="/inventario" element={<InventoryPage />} />
                 <Route path="/compras" element={<PurchasesPage />} />
+                <Route path="/compras/pedidos" element={<OrdersPage />} />
+                <Route path="/fiados" element={<CreditPage />} />
                 <Route path="/perdidas" element={<LossesPage />} />
                 <Route path="/contabilidad" element={<AccountingPage />} />
                 <Route path="/caja" element={<CashPage />} />

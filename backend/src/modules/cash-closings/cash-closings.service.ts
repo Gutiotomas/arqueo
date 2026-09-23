@@ -48,7 +48,8 @@ export class CashClosingsService {
 
   /**
    * Cuanto efectivo deberia haber en la caja al cerrar el dia:
-   *   apertura + ventas en efectivo - gastos en efectivo - abonos a proveedor
+   *   apertura + ventas en efectivo + cobros de fiados en efectivo
+   *   - gastos en efectivo - abonos a proveedor
    *   - lo consignado a la cuenta + lo que se saco de la cuenta para la caja
    *
    * Se consulta antes de guardar, para que el dueno vea el esperado mientras
@@ -57,10 +58,17 @@ export class CashClosingsService {
   async preview(businessId: string, date: string, openingCash?: number) {
     const day = parseBusinessDate(date);
 
-    const [ventas, gastos, abonos, reposiciones, cuenta, existente] = await Promise.all([
-      this.prisma.sale.aggregate({
+    const [ventas, cobros, gastos, abonos, reposiciones, cuenta, existente] = await Promise.all([
+      // Cada linea de venta tiene su forma de pago: se suman las de efectivo.
+      this.prisma.saleItem.aggregate({
+        where: { paymentMethod: 'CASH', sale: { businessId, date: day } },
+        _sum: { subtotal: true },
+        _count: true,
+      }),
+      // Lo fiado entra a la caja el dia que el cliente paga, no el de la venta.
+      this.prisma.customerPayment.aggregate({
         where: { businessId, date: day, paymentMethod: 'CASH' },
-        _sum: { total: true },
+        _sum: { amount: true },
         _count: true,
       }),
       this.prisma.expense.aggregate({
@@ -102,7 +110,8 @@ export class CashClosingsService {
       }),
     ]);
 
-    const cashSales = ventas._sum.total ?? new Prisma.Decimal(0);
+    const cashSales = ventas._sum.subtotal ?? new Prisma.Decimal(0);
+    const cashCollections = cobros._sum.amount ?? new Prisma.Decimal(0);
     const cashExpenses = gastos._sum.amount ?? new Prisma.Decimal(0);
     const cashSupplierPayments = (abonos._sum.amount ?? new Prisma.Decimal(0)).plus(
       reposiciones._sum.lossAmount ?? 0,
@@ -117,6 +126,7 @@ export class CashClosingsService {
     const expected = money(
       opening
         .plus(cashSales)
+        .plus(cashCollections)
         .minus(cashExpenses)
         .minus(cashSupplierPayments)
         .minus(depositedToAccount)
@@ -128,6 +138,9 @@ export class CashClosingsService {
       openingCash: opening.toFixed(2),
       cashSales: cashSales.toFixed(2),
       cashSalesCount: ventas._count,
+      /** Cobros de ventas fiadas recibidos en efectivo ese dia. */
+      cashCollections: cashCollections.toFixed(2),
+      cashCollectionsCount: cobros._count,
       cashExpenses: cashExpenses.toFixed(2),
       cashExpensesCount: gastos._count,
       cashSupplierPayments: cashSupplierPayments.toFixed(2),

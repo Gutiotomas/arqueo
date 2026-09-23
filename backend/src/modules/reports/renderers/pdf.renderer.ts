@@ -14,6 +14,7 @@ import {
 } from '../../../common/utils/format';
 import type { ReportData } from '../reports.service';
 import type { SupplierStatement } from '../supplier-statement.service';
+import type { PurchaseOrderData } from '../../purchase-orders/purchase-orders.service';
 
 // pdfmake es CommonJS y sus funciones usan `this` internamente: con
 // `import * as` el interop pierde las propiedades y al desestructurar se
@@ -133,6 +134,9 @@ export class PdfRenderer {
           ['Gastos de operar', `- ${dinero(data.kpis.expenses)}`],
           ...(Number(data.kpis.cardFees) > 0
             ? [['Comisiones del datáfono', `- ${dinero(data.kpis.cardFees)}`]]
+            : []),
+          ...(Number(data.kpis.supplierDiscounts) > 0
+            ? [['Descuentos de proveedores', `+ ${dinero(data.kpis.supplierDiscounts)}`]]
             : []),
           ['UTILIDAD NETA', dinero(data.kpis.profit)],
         ],
@@ -279,7 +283,9 @@ export class PdfRenderer {
             venta.items
               .map(
                 (item) =>
-                  `${formatQuantity(item.quantity)} x ${item.description}`,
+                  `${formatQuantity(item.quantity)} x ${item.description}${
+                    item.customer ? ` (fiado a ${item.customer})` : ''
+                  }`,
               )
               .join('\n'),
             venta.paymentMethod,
@@ -445,6 +451,123 @@ export class PdfRenderer {
     ];
 
     return this.documento(contenido, `${data.business.name} · ${data.supplier.name}`);
+  }
+
+  /**
+   * El pedido al proveedor, como la cuenta a mano: cantidad, descripción,
+   * valor unitario y total, con el total grande al final.
+   */
+  async renderOrder(pedido: PurchaseOrderData): Promise<Buffer> {
+    const { currency } = pedido.business;
+    const dinero = (valor: string | number) => formatMoney(valor, currency);
+    const fecha = formatDate(pedido.date.toISOString().slice(0, 10));
+
+    const contenido: Content[] = [
+      {
+        columns: [
+          [
+            { text: `Pedido No. ${pedido.number}`, style: 'titulo' },
+            { text: `${pedido.business.name} · ${fecha}`, style: 'subtitulo' },
+          ],
+          {
+            width: 'auto',
+            stack: [
+              { text: 'ARQUEO', style: 'marca', alignment: 'right' },
+              {
+                text: `Generado el ${formatDateTimeInTimezone(
+                  new Date().toISOString(),
+                  pedido.business.timezone,
+                )}`,
+                style: 'pie',
+                alignment: 'right',
+              },
+            ],
+          },
+        ],
+        margin: [0, 0, 0, 12],
+      },
+      {
+        table: {
+          widths: ['*'],
+          body: [
+            [
+              {
+                stack: [
+                  { text: 'PROVEEDOR', fontSize: 8, color: GRIS },
+                  {
+                    text: pedido.supplier?.name ?? 'Sin proveedor',
+                    bold: true,
+                    margin: [0, 2, 0, 0],
+                  },
+                  ...(pedido.supplier?.phone
+                    ? [{ text: `Tel. ${pedido.supplier.phone}`, fontSize: 9, color: GRIS }]
+                    : []),
+                ],
+                fillColor: GRIS_CLARO,
+                margin: [8, 6, 8, 6],
+              },
+            ],
+          ],
+        },
+        layout: 'noBorders',
+        margin: [0, 0, 0, 14],
+      },
+      {
+        table: {
+          headerRows: 1,
+          widths: ['auto', '*', 'auto', 'auto'],
+          body: [
+            [this.th('Cantidad'), this.th('Descripción'), this.th('Vr. unidad'), this.th('Vr. total')],
+            ...pedido.items.map((item): TableCell[] => [
+              this.td(
+                `${formatQuantity(item.quantity.toString())}${
+                  item.product ? ` ${item.product.unit}` : ''
+                }`,
+                'right',
+              ),
+              this.td(item.description),
+              this.td(dinero(item.unitPrice.toString()), 'right'),
+              this.td(dinero(item.subtotal.toString()), 'right'),
+            ]),
+          ],
+        },
+        layout: this.layoutTabla(),
+      },
+      {
+        columns: [
+          { text: '', width: '*' },
+          {
+            width: 'auto',
+            table: {
+              widths: ['auto', 120],
+              body: [
+                [
+                  { text: 'TOTAL', bold: true, fontSize: 12, margin: [8, 6, 8, 6] },
+                  {
+                    text: dinero(pedido.total.toString()),
+                    bold: true,
+                    fontSize: 14,
+                    alignment: 'right',
+                    margin: [8, 6, 8, 6],
+                  },
+                ],
+              ],
+            },
+            layout: 'noBorders',
+            fillColor: GRIS_CLARO,
+          },
+        ],
+        margin: [0, 10, 0, 0],
+      },
+      ...(pedido.notes
+        ? [
+            { text: 'Notas', style: 'seccion', margin: [0, 16, 0, 4] } as Content,
+            { text: pedido.notes, fontSize: 10 } as Content,
+          ]
+        : []),
+    ];
+
+    return this.documento(contenido, `${pedido.business.name} · Pedido No. ${pedido.number}`);
   }
 
   /** Página, estilos y pie comunes a todos los informes. */

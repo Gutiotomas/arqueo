@@ -109,7 +109,14 @@ export class PurchasesService {
       };
     });
 
-    const total = sumDecimals(lineas.map((linea) => linea.subtotal));
+    const subtotal = sumDecimals(lineas.map((linea) => linea.subtotal));
+    const descuento = money(dto.discount ?? 0);
+    if (descuento.greaterThan(subtotal)) {
+      throw new BadRequestException(
+        'El descuento no puede ser mayor que la suma de los productos',
+      );
+    }
+    const total = money(subtotal.minus(descuento));
     const abono = dto.initialPayment ? money(dto.initialPayment.amount) : null;
 
     if (abono && abono.greaterThan(total)) {
@@ -133,6 +140,9 @@ export class PurchasesService {
           invoiceNumber: dto.invoiceNumber?.trim() || null,
           dueDate: dto.dueDate ? parseBusinessDate(dto.dueDate) : null,
           notes: dto.notes?.trim() || null,
+          subtotal,
+          discount: descuento,
+          discountReason: dto.discountReason?.trim() || null,
           total,
           paidAmount: abono ?? new Prisma.Decimal(0),
         },
@@ -386,6 +396,7 @@ export class PurchasesService {
         date: parseBusinessDate(dto.date),
         dueDate: dto.dueDate ? parseBusinessDate(dto.dueDate) : null,
         notes: dto.notes?.trim() || null,
+        subtotal: money(dto.amount),
         total: money(dto.amount),
       },
       include: PURCHASE_INCLUDE,
@@ -538,3 +549,4 @@ export class PurchasesService {
     return null;
   }
 }
+

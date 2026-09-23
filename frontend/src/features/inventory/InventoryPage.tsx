@@ -7,6 +7,7 @@ import {
   Pencil,
   Plus,
   Scale,
+  Split,
   Tags,
   Trash2,
   X,
@@ -24,6 +25,7 @@ import {
   useUpdateProduct,
   type ProductFilters,
 } from './api';
+import { ConvertDialog } from './ConvertDialog';
 import { MovementsDialog } from './MovementsDialog';
 import { ProductFormDialog } from './ProductFormDialog';
 import { StockDialog, type ModoStock } from './StockDialog';
@@ -91,6 +93,10 @@ export function InventoryPage() {
     abierto: boolean;
     producto: Product | null;
   }>({ abierto: false, producto: null });
+  const [conversion, setConversion] = useState<{
+    abierto: boolean;
+    producto: Product | null;
+  }>({ abierto: false, producto: null });
   const [categoriasAbiertas, setCategoriasAbiertas] = useState(false);
   const [aBorrar, setABorrar] = useState<Product | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -138,6 +144,15 @@ export function InventoryPage() {
           onClick={() => abrirStock(producto, 'ajuste')}
         >
           <Scale className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Dividir o convertir"
+          title="Dividir o convertir en otro producto"
+          onClick={() => setConversion({ abierto: true, producto })}
+        >
+          <Split className="h-4 w-4" />
         </Button>
         <Button
           variant="ghost"
@@ -428,6 +443,12 @@ export function InventoryPage() {
         onOpenChange={(abierto) =>
           setFormulario((previo) => ({ ...previo, abierto }))
         }
+      />
+
+      <ConvertDialog
+        open={conversion.abierto}
+        onOpenChange={(abierto) => setConversion((previo) => ({ ...previo, abierto }))}
+        producto={conversion.producto}
       />
 
       <StockDialog

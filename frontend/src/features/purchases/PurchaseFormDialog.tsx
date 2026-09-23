@@ -42,12 +42,22 @@ function lineaVacia(): Linea {
   return { key: crypto.randomUUID(), productId: '', quantity: 1, unitCost: '' };
 }
 
+/** Lo que llega de un pedido para no volver a teclearlo. */
+export interface CompraInicial {
+  supplierId?: string;
+  notes?: string;
+  items: { productId: string; quantity: number; unitCost: number }[];
+}
+
 export function PurchaseFormDialog({
   open,
   onOpenChange,
+  inicial,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Al registrar como compra un pedido, viene ya relleno. */
+  inicial?: CompraInicial | null;
 }) {
   const { currency } = useAuth();
   const crear = useCreatePurchase();
@@ -60,6 +70,8 @@ export function PurchaseFormDialog({
   const [vencimiento, setVencimiento] = useState('');
   const [notas, setNotas] = useState('');
   const [lineas, setLineas] = useState<Linea[]>([lineaVacia()]);
+  const [descuento, setDescuento] = useState<number | ''>('');
+  const [motivoDescuento, setMotivoDescuento] = useState('');
   const [comoPago, setComoPago] = useState<ComoPago>('nada');
   const [abono, setAbono] = useState<number | ''>('');
   const [formaDePago, setFormaDePago] = useState<PaymentMethod>('CASH');
@@ -82,17 +94,28 @@ export function PurchaseFormDialog({
   useEffect(() => {
     if (!open) return;
     setFecha(today());
-    setProveedorId('');
+    setProveedorId(inicial?.supplierId ?? '');
     setProveedorNuevo('');
     setFactura('');
     setVencimiento('');
-    setNotas('');
-    setLineas([lineaVacia()]);
+    setNotas(inicial?.notes ?? '');
+    setLineas(
+      inicial?.items.length
+        ? inicial.items.map((item) => ({
+            key: crypto.randomUUID(),
+            productId: item.productId,
+            quantity: item.quantity,
+            unitCost: item.unitCost,
+          }))
+        : [lineaVacia()],
+    );
+    setDescuento('');
+    setMotivoDescuento('');
     setComoPago('nada');
     setAbono('');
     setFormaDePago('CASH');
     setError(null);
-  }, [open]);
+  }, [open, inicial]);
 
   function cambiarLinea(key: string, cambios: Partial<Linea>) {
     setLineas((previas) =>
@@ -109,10 +132,11 @@ export function PurchaseFormDialog({
     });
   }
 
-  const total = lineas.reduce(
+  const subtotal = lineas.reduce(
     (suma, linea) => suma + Number(linea.quantity || 0) * Number(linea.unitCost || 0),
     0,
   );
+  const total = subtotal - Number(descuento || 0);
 
   const pagadoAhora =
     comoPago === 'total' ? total : comoPago === 'parcial' ? Number(abono || 0) : 0;
@@ -145,6 +169,10 @@ export function PurchaseFormDialog({
       setError('Escribe el nombre del proveedor nuevo');
       return;
     }
+    if (Number(descuento || 0) > subtotal) {
+      setError('El descuento no puede ser mayor que la suma de los productos');
+      return;
+    }
     if (comoPago === 'parcial' && Number(abono || 0) <= 0) {
       setError('Escribe cuánto pagaste ahora');
       return;
@@ -165,6 +193,12 @@ export function PurchaseFormDialog({
       ...(vencimiento ? { dueDate: vencimiento } : {}),
       ...(notas.trim() ? { notes: notas.trim() } : {}),
       items,
+      ...(Number(descuento || 0) > 0
+        ? {
+            discount: Number(descuento),
+            ...(motivoDescuento.trim() ? { discountReason: motivoDescuento.trim() } : {}),
+          }
+        : {}),
       ...(pagadoAhora > 0
         ? {
             initialPayment: {
@@ -375,6 +409,30 @@ export function PurchaseFormDialog({
           </div>
         </div>
 
+        {/* Un cruce, una devolución, una promoción: el proveedor resta del total. */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Descuento del proveedor (opcional)"
+            hint="Lo que te restó del total. No cambia el costo de los productos."
+          >
+            <MoneyInput
+              aria-label="Descuento"
+              value={descuento}
+              onValueChange={setDescuento}
+            />
+          </Field>
+          {Number(descuento || 0) > 0 && (
+            <Field label="Por qué te lo descontó">
+              <Input
+                maxLength={200}
+                placeholder="Cruce por las gaseosas vencidas..."
+                value={motivoDescuento}
+                onChange={(e) => setMotivoDescuento(e.target.value)}
+              />
+            </Field>
+          )}
+        </div>
+
         <div className="rounded-lg border border-slate-200 p-3">
           <p className="text-sm font-medium text-slate-700">¿Pagaste algo ahora?</p>
           <p className="mt-0.5 text-xs text-slate-500">
@@ -447,10 +505,22 @@ export function PurchaseFormDialog({
         )}
 
         <div className="rounded-lg bg-slate-900 px-4 py-3 text-white">
+          {Number(descuento || 0) > 0 && (
+            <div className="mb-2 space-y-1 border-b border-white/15 pb-2 text-sm text-slate-300">
+              <div className="flex items-center justify-between">
+                <span>Mercancía</span>
+                <span className="tabular">{formatMoney(subtotal, currency)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Descuento del proveedor</span>
+                <span className="tabular">− {formatMoney(Number(descuento), currency)}</span>
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-sm">Total de la compra</span>
             <span className="tabular text-xl font-bold">
-              {formatMoney(total, currency)}
+              {formatMoney(Math.max(total, 0), currency)}
             </span>
           </div>
           <div className="mt-2 flex items-center justify-between border-t border-white/15 pt-2 text-sm">

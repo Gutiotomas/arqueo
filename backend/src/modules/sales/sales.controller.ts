@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -15,7 +16,14 @@ import {
   CurrentUser,
   type AuthUser,
 } from '../../common/decorators/current-user.decorator';
-import { CreateSaleDto, SaleQueryDto, UpdateSaleDto } from './dto/sale.dto';
+import { CustomersService } from './customers.service';
+import {
+  CreateSaleDto,
+  CustomerDto,
+  CustomerPaymentDto,
+  SaleQueryDto,
+  UpdateSaleDto,
+} from './dto/sale.dto';
 import { SalesService } from './sales.service';
 
 @ApiTags('sales')
@@ -65,5 +73,79 @@ export class SalesController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.sales.remove(businessId, id);
+  }
+
+}
+
+@ApiTags('customers')
+@ApiBearerAuth()
+@Controller('customers')
+export class CustomersController {
+  constructor(private readonly customers: CustomersService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Lista los clientes' })
+  findAll(@CurrentUser('businessId') businessId: string) {
+    return this.customers.findAll(businessId);
+  }
+
+  @Get('debt')
+  @ApiOperation({ summary: 'Lo que deben los clientes, quién y desde cuándo' })
+  debt(@CurrentUser('businessId') businessId: string) {
+    return this.customers.debt(businessId);
+  }
+
+  @Get(':id/account')
+  @ApiOperation({ summary: 'El cuaderno de un cliente: fiado, cobrado y saldo' })
+  account(
+    @CurrentUser('businessId') businessId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.customers.account(businessId, id);
+  }
+
+  @Post(':id/payments')
+  @ApiOperation({ summary: 'Cobra una parte o todo de lo que debe el cliente' })
+  addPayment(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CustomerPaymentDto,
+  ) {
+    return this.customers.addPayment(user.businessId, user.userId, id, dto);
+  }
+
+  @Delete(':id/payments/:paymentId')
+  @ApiOperation({ summary: 'Borra un cobro mal registrado' })
+  removePayment(
+    @CurrentUser('businessId') businessId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('paymentId', ParseUUIDPipe) paymentId: string,
+  ) {
+    return this.customers.removePayment(businessId, id, paymentId);
+  }
+
+  @Post()
+  @ApiOperation({ summary: 'Da de alta un cliente' })
+  create(@CurrentUser('businessId') businessId: string, @Body() dto: CustomerDto) {
+    return this.customers.create(businessId, dto);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Edita un cliente' })
+  update(
+    @CurrentUser('businessId') businessId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CustomerDto,
+  ) {
+    return this.customers.update(businessId, id, dto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Borra un cliente sin ventas' })
+  remove(
+    @CurrentUser('businessId') businessId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.customers.remove(businessId, id);
   }
 }

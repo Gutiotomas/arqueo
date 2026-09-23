@@ -64,8 +64,7 @@ describe('Cuenta del negocio (e2e)', () => {
         .post('/api/v1/sales')
         .send({
           date: hoy,
-          paymentMethod,
-          items: [{ description: 'Pedido', quantity: 1, unitPrice }],
+          items: [{ description: 'Pedido', quantity: 1, unitPrice, paymentMethod }],
         }),
     ).expect(201);
 

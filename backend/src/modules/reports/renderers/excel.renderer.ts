@@ -71,6 +71,13 @@ export class ExcelRenderer {
             boolean,
           ][])
         : []),
+      ...(Number(data.kpis.supplierDiscounts) > 0
+        ? ([['Descuentos de proveedores', data.kpis.supplierDiscounts, false]] as [
+            string,
+            string,
+            boolean,
+          ][])
+        : []),
       ['UTILIDAD NETA', data.kpis.profit, true],
     ];
     for (const [etiqueta, valor, destacar] of resultado) {
@@ -178,6 +185,7 @@ export class ExcelRenderer {
       { header: 'Precio unitario', key: 'unitPrice', width: 16 },
       { header: 'Subtotal', key: 'subtotal', width: 16 },
       { header: 'Forma de pago', key: 'paymentMethod', width: 16 },
+      { header: 'Fiado a', key: 'customer', width: 22 },
       { header: 'Notas', key: 'notes', width: 30 },
     ];
     this.estiloCabecera(hoja);
@@ -191,7 +199,8 @@ export class ExcelRenderer {
           quantity: Number(item.quantity),
           unitPrice: Number(item.unitPrice),
           subtotal: Number(item.subtotal),
-          paymentMethod: venta.paymentMethod,
+          paymentMethod: item.paymentMethod,
+          customer: item.customer ?? '',
           notes: venta.notes ?? '',
         });
       }

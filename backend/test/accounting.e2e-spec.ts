@@ -133,8 +133,7 @@ describe('Contabilidad y compras (e2e)', () => {
         .post('/api/v1/sales')
         .send({
           date: hoy,
-          paymentMethod: 'CASH',
-          items: [{ productId: productoId, quantity: 4, unitPrice: 5000 }],
+          items: [{ productId: productoId, quantity: 4, unitPrice: 5000, paymentMethod: 'CASH' }],
         }),
     ).expect(201);
 
@@ -364,5 +363,81 @@ describe('Contabilidad y compras (e2e)', () => {
     );
 
     await como(http().delete(`/api/v1/purchases/${deuda.id}`)).expect(200);
+  });
+
+  it('el descuento del proveedor baja lo que se debe, no el costo, y suma en la utilidad', async () => {
+    const antes = await como(
+      http().get(`/api/v1/accounting/overview?from=${hoy}&to=${hoy}`),
+    ).expect(200);
+    const arepas = await productoNuevo(`Arepas ${sufijo}`, 0, 0);
+    const papitas = await productoNuevo(`Papitas ${sufijo}`, 0, 0);
+
+    // 5 arepas a 2.000 + 10 papitas a 8.000 = 90.000; el proveedor resta 15.000.
+    const compra = await como(
+      http()
+        .post('/api/v1/purchases')
+        .send({
+          date: hoy,
+          supplierName: 'Distribuidora de prueba',
+          discount: 15000,
+          discountReason: 'Cruce por las gaseosas vencidas',
+          items: [
+            { productId: arepas, quantity: 5, unitCost: 2000 },
+            { productId: papitas, quantity: 10, unitCost: 8000 },
+          ],
+          initialPayment: { date: hoy, amount: 75000, paymentMethod: 'CASH' },
+        }),
+    ).expect(201);
+
+    expect(compra.body.subtotal).toBe('90000');
+    expect(compra.body.discount).toBe('15000');
+    expect(compra.body.total).toBe('75000');
+    expect(compra.body.status).toBe('paid');
+
+    // El costo es el de la línea: el descuento es cosa aparte.
+    expect(await costoYStock(arepas)).toEqual({ costo: 2000, stock: 5 });
+    expect(await costoYStock(papitas)).toEqual({ costo: 8000, stock: 10 });
+
+    // Y esos 15.000 aparecen como ingreso en la contabilidad.
+    const despues = await como(
+      http().get(`/api/v1/accounting/overview?from=${hoy}&to=${hoy}`),
+    ).expect(200);
+    expect(Number(despues.body.supplierDiscounts)).toBe(
+      Number(antes.body.supplierDiscounts) + 15000,
+    );
+    expect(Number(despues.body.netProfit)).toBe(Number(antes.body.netProfit) + 15000);
+    const tablero = await como(
+      http().get(`/api/v1/dashboard/summary?from=${hoy}&to=${hoy}`),
+    ).expect(200);
+    expect(tablero.body.profit).toBe(despues.body.netProfit);
+
+    // Borrarla devuelve el costo de antes.
+    await como(http().delete(`/api/v1/purchases/${compra.body.id}`)).expect(200);
+    expect(await costoYStock(arepas)).toEqual({ costo: 0, stock: 0 });
+  });
+
+  it('el descuento no puede pasarse de la mercancía ni el abono del total con descuento', async () => {
+    const id = await productoNuevo(`Gaseosa ${sufijo}`, 0, 0);
+    const base = {
+      date: hoy,
+      supplierName: 'Distribuidora de prueba',
+      items: [{ productId: id, quantity: 3, unitCost: 3000 }],
+    };
+
+    const exagerado = await como(
+      http().post('/api/v1/purchases').send({ ...base, discount: 9001 }),
+    ).expect(400);
+    expect(exagerado.body.message).toMatch(/descuento/i);
+
+    const abonoDeMas = await como(
+      http()
+        .post('/api/v1/purchases')
+        .send({
+          ...base,
+          discount: 1000,
+          initialPayment: { date: hoy, amount: 8500, paymentMethod: 'CASH' },
+        }),
+    ).expect(400);
+    expect(abonoDeMas.body.message).toMatch(/abono/i);
   });
 });

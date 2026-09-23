@@ -2,7 +2,6 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
-import type { PaymentMethod } from '../../generated/prisma/enums';
 import { paginated } from '../../common/dto/pagination.dto';
 import { parseBusinessDate } from '../../common/utils/dates';
 import { money, quantity, sumDecimals, toDecimal } from '../../common/utils/money';
@@ -11,11 +10,20 @@ import { CreateSaleDto, SaleItemDto, SaleQueryDto } from './dto/sale.dto';
 /** Lo que incluimos siempre que devolvemos una venta. */
 const SALE_INCLUDE = {
   items: {
-    include: { product: { select: { id: true, name: true, unit: true } } },
+    include: {
+      product: { select: { id: true, name: true, unit: true } },
+      customer: { select: { id: true, name: true } },
+    },
+    orderBy: { position: 'asc' },
   },
   user: { select: { id: true, name: true } },
 } satisfies Prisma.SaleInclude;
 
+/**
+ * Una venta suele ser el registro de todo un dia: varias lineas, y cada linea
+ * pagada a su manera. De seis arepas, dos en efectivo, dos por transferencia
+ * y dos fiadas a alguien son tres lineas del mismo producto.
+ */
 @Injectable()
 export class SalesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -24,7 +32,8 @@ export class SalesService {
     const where: Prisma.SaleWhereInput = {
       businessId,
       ...this.dateFilter(query.from, query.to),
-      ...(query.paymentMethod ? { paymentMethod: query.paymentMethod } : {}),
+      ...(query.paymentMethod ? { items: { some: { paymentMethod: query.paymentMethod } } } : {}),
+      ...(query.customerId ? { items: { some: { customerId: query.customerId } } } : {}),
       ...(query.search
         ? {
             OR: [
@@ -77,7 +86,7 @@ export class SalesService {
   async create(businessId: string, userId: string, dto: CreateSaleDto) {
     const lineas = await this.prepareItems(businessId, dto.items);
     const total = sumDecimals(lineas.map((linea) => linea.subtotal));
-    const cardFee = await this.comisionDatafono(businessId, dto.paymentMethod, total);
+    const cardFee = await this.comisionDatafono(businessId, lineas);
 
     return this.prisma.$transaction(async (tx) => {
       const sale = await tx.sale.create({
@@ -85,7 +94,6 @@ export class SalesService {
           businessId,
           userId,
           date: parseBusinessDate(dto.date),
-          paymentMethod: dto.paymentMethod,
           total,
           cardFee,
           notes: dto.notes?.trim() || null,
@@ -104,12 +112,14 @@ export class SalesService {
   /**
    * PUT = reemplazo completo: deshace el efecto de las lineas viejas sobre el
    * stock, las borra y aplica las nuevas. Asi el inventario sigue cuadrando.
+   * Lo fiado tambien se recalcula: la cuenta del cliente es la suma de sus
+   * lineas, asi que cambiarlas cambia lo que debe.
    */
   async update(businessId: string, userId: string, id: string, dto: CreateSaleDto) {
     await this.findOne(businessId, id);
     const lineas = await this.prepareItems(businessId, dto.items);
     const total = sumDecimals(lineas.map((linea) => linea.subtotal));
-    const cardFee = await this.comisionDatafono(businessId, dto.paymentMethod, total);
+    const cardFee = await this.comisionDatafono(businessId, lineas);
 
     return this.prisma.$transaction(async (tx) => {
       await this.revertStock(tx, id);
@@ -119,7 +129,6 @@ export class SalesService {
         where: { id },
         data: {
           date: parseBusinessDate(dto.date),
-          paymentMethod: dto.paymentMethod,
           total,
           cardFee,
           notes: dto.notes?.trim() || null,
@@ -147,12 +156,11 @@ export class SalesService {
   }
 
   // ------------------------------------------------------------------
-  // Interno
-  // ------------------------------------------------------------------
 
   /**
-   * Valida las lineas y les pone precio y coste. Comprueba de paso que los
-   * productos sean de esta empresa: es la barrera anti fuga entre negocios.
+   * Valida las lineas y resuelve productos y clientes. Un cliente nuevo se da
+   * de alta al vuelo, como en el mostrador; una linea fiada sin cliente no
+   * vale, porque no se sabria a quien cobrarle.
    */
   private async prepareItems(businessId: string, items: SaleItemDto[]) {
     const productIds = [
@@ -172,6 +180,7 @@ export class SalesService {
     }
 
     const porId = new Map(productos.map((producto) => [producto.id, producto]));
+    const clientes = await this.resolverClientes(businessId, items);
 
     return items.map((item, indice) => {
       const producto = item.productId ? porId.get(item.productId)! : undefined;
@@ -180,6 +189,13 @@ export class SalesService {
       if (!descripcion) {
         throw new BadRequestException(
           `La linea ${indice + 1} necesita un producto o una descripción`,
+        );
+      }
+
+      const customerId = clientes(item);
+      if (item.paymentMethod === 'CREDIT' && !customerId) {
+        throw new BadRequestException(
+          `Para fiar ${descripcion} hay que decir a quién`,
         );
       }
 
@@ -193,28 +209,64 @@ export class SalesService {
         unitPrice: precio,
         unitCost: producto ? toDecimal(producto.costPrice) : new Prisma.Decimal(0),
         subtotal: money(cantidad.times(precio)),
+        paymentMethod: item.paymentMethod,
+        customerId: item.paymentMethod === 'CREDIT' ? customerId : null,
       };
     });
   }
 
+  /** Devuelve una funcion que da el id de cliente de cada linea, ya validado o creado. */
+  private async resolverClientes(businessId: string, items: SaleItemDto[]) {
+    const ids = [...new Set(items.map((item) => item.customerId).filter((id): id is string => !!id))];
+    const nombres = [
+      ...new Set(
+        items
+          .map((item) => item.customerName?.trim())
+          .filter((nombre): nombre is string => !!nombre),
+      ),
+    ];
+
+    const existentes = ids.length
+      ? await this.prisma.customer.findMany({ where: { id: { in: ids }, businessId } })
+      : [];
+    if (existentes.length !== ids.length) {
+      throw new BadRequestException('Alguno de los clientes no existe');
+    }
+
+    const porNombre = new Map<string, string>();
+    for (const nombre of nombres) {
+      const cliente = await this.prisma.customer.upsert({
+        where: { businessId_name: { businessId, name: nombre } },
+        create: { businessId, name: nombre },
+        update: {},
+      });
+      porNombre.set(nombre, cliente.id);
+    }
+
+    return (item: SaleItemDto): string | null =>
+      item.customerId ?? (item.customerName?.trim() ? porNombre.get(item.customerName.trim())! : null);
+  }
+
   /**
-   * Lo que se queda el datafono de una venta con tarjeta. Se guarda en la
+   * Lo que se queda el datafono de las lineas con tarjeta. Se guarda en la
    * venta, como el costo en cada linea: si mañana cambia el %, las ventas de
    * hoy no cambian.
    */
   private async comisionDatafono(
     businessId: string,
-    paymentMethod: PaymentMethod,
-    total: Prisma.Decimal,
+    lineas: { paymentMethod: string; subtotal: Prisma.Decimal }[],
   ): Promise<Prisma.Decimal> {
-    if (paymentMethod !== 'CARD') return new Prisma.Decimal(0);
+    const conTarjeta = sumDecimals(
+      lineas.filter((linea) => linea.paymentMethod === 'CARD').map((linea) => linea.subtotal),
+    );
+    if (conTarjeta.isZero()) return new Prisma.Decimal(0);
 
     const { cardFeePercent } = await this.prisma.business.findUniqueOrThrow({
       where: { id: businessId },
       select: { cardFeePercent: true },
     });
 
-    return money(total.times(cardFeePercent).dividedBy(100));
+    return money(conTarjeta.times(cardFeePercent).dividedBy(100));
   }
 
   /** Inserta lineas y, para las que llevan producto, descuenta stock. */
@@ -225,9 +277,9 @@ export class SalesService {
     saleId: string,
     lineas: Awaited<ReturnType<SalesService['prepareItems']>>,
   ) {
-    for (const linea of lineas) {
+    for (const [position, linea] of lineas.entries()) {
       const item = await tx.saleItem.create({
-        data: { saleId, ...linea },
+        data: { saleId, position, ...linea },
       });
 
       if (!linea.productId) continue;
@@ -253,11 +305,10 @@ export class SalesService {
     }
   }
 
-  /** Devuelve al inventario lo que descontaron las lineas actuales de la venta. */
+  /** Devuelve al inventario lo que se llevaron las lineas actuales de la venta. */
   private async revertStock(tx: Prisma.TransactionClient, saleId: string) {
     const items = await tx.saleItem.findMany({
       where: { saleId, productId: { not: null } },
-      select: { id: true, productId: true, quantity: true },
     });
 
     for (const item of items) {
@@ -265,8 +316,8 @@ export class SalesService {
         where: { id: item.productId! },
         data: { stock: { increment: item.quantity } },
       });
-      // El movimiento OUT se borra con la linea (onDelete: Cascade), de modo
-      // que la suma de movimientos sigue igualando el stock del producto.
+      // Los movimientos de stock de esas lineas se van con ellas (cascade),
+      // asi que la suma de movimientos sigue igualando el stock del producto.
     }
   }
 

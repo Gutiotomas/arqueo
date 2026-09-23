@@ -1,7 +1,8 @@
 /** Tipos del API. Los importes viajan como texto para no perder precision. */
 
-export type PaymentMethod = 'CASH' | 'CARD' | 'TRANSFER' | 'OTHER';
+export type PaymentMethod = 'CASH' | 'CARD' | 'TRANSFER' | 'OTHER' | 'CREDIT';
 
+/** Con lo que se paga de verdad: gastos, abonos, cobros. */
 export const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: 'CASH', label: 'Efectivo' },
   { value: 'CARD', label: 'Tarjeta' },
@@ -9,11 +10,18 @@ export const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: 'OTHER', label: 'Otro' },
 ];
 
+/** En una venta además se puede fiar: el cliente paga después. */
+export const SALE_PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
+  ...PAYMENT_METHODS,
+  { value: 'CREDIT', label: 'Fiado' },
+];
+
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CASH: 'Efectivo',
   CARD: 'Tarjeta',
   TRANSFER: 'Transferencia',
   OTHER: 'Otro',
+  CREDIT: 'Fiado',
 };
 
 export interface Business {
@@ -75,6 +83,10 @@ export interface StockMovement {
   saleItem: { id: string; saleId: string } | null;
 }
 
+/**
+ * Una línea de venta: un producto (o parte de él) y cómo se pagó. De seis
+ * arepas, dos en efectivo, dos por transferencia y dos fiadas son tres líneas.
+ */
 export interface SaleItem {
   id: string;
   productId: string | null;
@@ -82,17 +94,68 @@ export interface SaleItem {
   quantity: string;
   unitPrice: string;
   subtotal: string;
+  paymentMethod: PaymentMethod;
   product: { id: string; name: string; unit: string } | null;
+  /** A quién se le fió. Solo en las líneas fiadas. */
+  customer: { id: string; name: string } | null;
 }
 
+/** Suele ser el registro de todo un día: varias líneas, cada una pagada a su manera. */
 export interface Sale {
   id: string;
   date: string;
-  paymentMethod: PaymentMethod;
   total: string;
   notes: string | null;
   items: SaleItem[];
   user: { id: string; name: string } | null;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string | null;
+  notes: string | null;
+  _count?: { items: number; payments: number };
+}
+
+export interface CustomerPayment {
+  id: string;
+  date: string;
+  amount: string;
+  paymentMethod: PaymentMethod;
+  notes: string | null;
+}
+
+/** El cuaderno de un cliente. */
+export interface CustomerAccount {
+  customer: Customer;
+  credited: string;
+  paid: string;
+  balance: string;
+  credits: {
+    id: string;
+    saleId: string;
+    date: string;
+    description: string;
+    quantity: string;
+    unitPrice: string;
+    subtotal: string;
+  }[];
+  payments: CustomerPayment[];
+}
+
+export interface CustomerDebt {
+  total: string;
+  customersCount: number;
+  byCustomer: {
+    customerId: string;
+    name: string;
+    balance: string;
+    creditCount: number;
+    /** Desde cuándo se le fía. */
+    oldestDate: string | null;
+    lastPaymentDate: string | null;
+  }[];
 }
 
 export interface Expense {
@@ -121,6 +184,9 @@ export interface CashPreview {
   openingCash: string;
   cashSales: string;
   cashSalesCount: number;
+  /** Cobros de ventas fiadas recibidos en efectivo ese día. */
+  cashCollections: string;
+  cashCollectionsCount: number;
   cashExpenses: string;
   cashExpensesCount: number;
   /** Abonos a proveedores y reposiciones pagadas, en efectivo. */
@@ -167,6 +233,9 @@ export interface AccountFlows {
   cardSales: string;
   cardFees: string;
   cardSalesCount: number;
+  /** Cobros de fiados por transferencia o tarjeta. */
+  collections: string;
+  collectionsCount: number;
   expenses: string;
   expensesCount: number;
   supplierPayments: string;
@@ -328,6 +397,20 @@ export interface SupplierStatement {
   }[];
 }
 
+/** Una compra en la que vino un producto, vista desde el inventario. */
+export interface ProductPurchaseRef {
+  purchaseId: string;
+  itemId: string;
+  date: string;
+  invoiceNumber: string | null;
+  supplier: string | null;
+  /** Lo que trajo de este producto. */
+  quantity: string;
+  unitCost: string;
+  total: string;
+  balance: string;
+}
+
 export interface ReportData {
   business: { name: string; currency: string; timezone: string };
   period: { type: string; label: string; from: string; to: string };
@@ -359,6 +442,27 @@ export interface Supplier {
   _count?: { purchases: number };
 }
 
+/** Lo que se le pide al proveedor. No mueve inventario ni deuda. */
+export interface PurchaseOrderItem {
+  id: string;
+  productId: string | null;
+  description: string;
+  quantity: string;
+  unitPrice: string;
+  subtotal: string;
+  product: { id: string; name: string; unit: string } | null;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  number: number;
+  date: string;
+  total: string;
+  notes: string | null;
+  items: PurchaseOrderItem[];
+  supplier: { id: string; name: string; phone: string | null } | null;
+}
+
 export interface PurchaseItem {
   id: string;
   productId: string;
@@ -383,6 +487,12 @@ export interface Purchase {
   date: string;
   invoiceNumber: string | null;
   dueDate: string | null;
+  /** Suma de los productos, antes del descuento. */
+  subtotal: string;
+  /** Lo que el proveedor restó del total. No cambia el costo de los productos. */
+  discount: string;
+  discountReason: string | null;
+  /** subtotal − discount: lo que se le debe al proveedor. */
   total: string;
   paidAmount: string;
   /** Lo que queda por pagar. */
@@ -421,6 +531,8 @@ export interface AccountingOverview {
   operatingExpenses: string;
   /** Lo que se quedó el datáfono de las ventas con tarjeta. */
   cardFees: string;
+  /** Cruces y rebajas de los proveedores sobre el total de las compras. */
+  supplierDiscounts: string;
   netProfit: string;
   netMargin: number;
   salesCount: number;
@@ -440,6 +552,8 @@ export interface AccountingOverview {
   inventoryValue: string;
   inventoryUnits: string;
   supplierDebt: string;
+  /** Lo que deben los clientes por ventas fiadas. */
+  customerDebt: string;
   purchases: string;
   supplierPayments: string;
   workingCapital: string;

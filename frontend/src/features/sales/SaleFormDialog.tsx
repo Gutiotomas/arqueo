@@ -1,63 +1,113 @@
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Split, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-import { useCreateSale, useUpdateSale, type SalePayload } from './api';
+import { useCreateSale, useCustomers, useUpdateSale, type SaleItemPayload, type SalePayload } from './api';
 import { useAuth } from '@/features/auth/auth-context';
-import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
 import { ApiError, api } from '@/shared/api/client';
 import {
-  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  SALE_PAYMENT_METHODS,
   type Paginated,
   type PaymentMethod,
   type Product,
   type Sale,
 } from '@/shared/api/types';
+import { cn } from '@/shared/lib/cn';
 import { today } from '@/shared/lib/dates';
 import { formatMoney, toNumber } from '@/shared/lib/money';
+import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
 
+/** Valor del desplegable de cliente cuando se va a escribir uno nuevo. */
+const CLIENTE_NUEVO = '__nuevo__';
+
+/**
+ * Cómo se pagó una parte del producto. Seis arepas pueden ser dos partes en
+ * efectivo, dos por transferencia y dos fiadas a alguien.
+ */
+interface Parte {
+  key: string;
+  quantity: number | '';
+  paymentMethod: PaymentMethod;
+  customerId: string;
+  customerName: string;
+}
+
+/** Un producto de la venta con su precio y sus partes. */
 interface Linea {
-  /** Clave local para poder repintar la lista al anadir o quitar filas. */
   key: string;
   productId: string;
   description: string;
-  quantity: number | '';
   unitPrice: number | '';
+  partes: Parte[];
 }
 
-function lineaVacia(): Linea {
+function parteVacia(paymentMethod: PaymentMethod, quantity: number | '' = 1): Parte {
+  return { key: crypto.randomUUID(), quantity, paymentMethod, customerId: '', customerName: '' };
+}
+
+function lineaVacia(paymentMethod: PaymentMethod): Linea {
   return {
     key: crypto.randomUUID(),
     productId: '',
     description: '',
-    quantity: 1,
     unitPrice: '',
+    partes: [parteVacia(paymentMethod)],
   };
+}
+
+/** Las líneas del API vienen sueltas; aquí se agrupan por producto y precio. */
+function agrupar(venta: Sale): Linea[] {
+  const lineas = new Map<string, Linea>();
+  for (const item of venta.items) {
+    const clave = `${item.productId ?? item.description}|${item.unitPrice}`;
+    const linea =
+      lineas.get(clave) ??
+      {
+        key: item.id,
+        productId: item.productId ?? '',
+        description: item.description,
+        unitPrice: toNumber(item.unitPrice),
+        partes: [],
+      };
+    linea.partes.push({
+      key: item.id,
+      quantity: toNumber(item.quantity),
+      paymentMethod: item.paymentMethod,
+      customerId: item.customer?.id ?? '',
+      customerName: '',
+    });
+    lineas.set(clave, linea);
+  }
+  return [...lineas.values()];
 }
 
 export function SaleFormDialog({
   open,
   onOpenChange,
   venta,
+  formaDePagoInicial = 'CASH',
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   venta?: Sale | null;
+  /** Con qué arranca cada parte nueva: desde Fiados llega ya en "Fiado". */
+  formaDePagoInicial?: PaymentMethod;
 }) {
   const { currency } = useAuth();
   const crear = useCreateSale();
   const actualizar = useUpdateSale();
+  const clientes = useCustomers();
 
   const [fecha, setFecha] = useState(today());
-  const [formaDePago, setFormaDePago] = useState<PaymentMethod>('CASH');
   const [notas, setNotas] = useState('');
-  const [lineas, setLineas] = useState<Linea[]>([lineaVacia()]);
+  const [lineas, setLineas] = useState<Linea[]>([lineaVacia('CASH')]);
   const [error, setError] = useState<string | null>(null);
 
-  // Catalogo para el desplegable de productos.
+  // Catálogo para el desplegable de productos.
   const productos = useQuery({
     queryKey: ['products', 'para-venta'],
     queryFn: () =>
@@ -77,24 +127,14 @@ export function SaleFormDialog({
 
     if (venta) {
       setFecha(venta.date.slice(0, 10));
-      setFormaDePago(venta.paymentMethod);
       setNotas(venta.notes ?? '');
-      setLineas(
-        venta.items.map((item) => ({
-          key: item.id,
-          productId: item.productId ?? '',
-          description: item.description,
-          quantity: toNumber(item.quantity),
-          unitPrice: toNumber(item.unitPrice),
-        })),
-      );
+      setLineas(agrupar(venta));
     } else {
       setFecha(today());
-      setFormaDePago('CASH');
       setNotas('');
-      setLineas([lineaVacia()]);
+      setLineas([lineaVacia(formaDePagoInicial)]);
     }
-  }, [open, venta]);
+  }, [open, venta, formaDePagoInicial]);
 
   function cambiarLinea(key: string, cambios: Partial<Linea>) {
     setLineas((previas) =>
@@ -102,45 +142,99 @@ export function SaleFormDialog({
     );
   }
 
-  /** Al elegir producto se rellena el precio de venta que ya esta guardado. */
+  function cambiarParte(lineaKey: string, parteKey: string, cambios: Partial<Parte>) {
+    setLineas((previas) =>
+      previas.map((linea) =>
+        linea.key === lineaKey
+          ? {
+              ...linea,
+              partes: linea.partes.map((parte) =>
+                parte.key === parteKey ? { ...parte, ...cambios } : parte,
+              ),
+            }
+          : linea,
+      ),
+    );
+  }
+
+  /** Al elegir producto se rellena el precio de venta que ya está guardado. */
   function elegirProducto(key: string, productId: string) {
     const producto = porId.get(productId);
     cambiarLinea(key, {
       productId,
-      description: producto?.name ?? '',
+      description: producto ? '' : '',
       unitPrice: producto ? toNumber(producto.salePrice) : '',
     });
   }
 
-  const total = lineas.reduce(
-    (suma, linea) => suma + Number(linea.quantity || 0) * Number(linea.unitPrice || 0),
-    0,
-  );
+  const cantidadLinea = (linea: Linea) =>
+    linea.partes.reduce((suma, parte) => suma + Number(parte.quantity || 0), 0);
+  const subtotalLinea = (linea: Linea) => cantidadLinea(linea) * Number(linea.unitPrice || 0);
+  const total = lineas.reduce((suma, linea) => suma + subtotalLinea(linea), 0);
+
+  /** Cuánto va por cada forma de pago, y a quién se fía. */
+  const reparto = useMemo(() => {
+    const porMetodo = new Map<PaymentMethod, number>();
+    const fiadoA = new Map<string, number>();
+    for (const linea of lineas) {
+      for (const parte of linea.partes) {
+        const importe = Number(parte.quantity || 0) * Number(linea.unitPrice || 0);
+        porMetodo.set(parte.paymentMethod, (porMetodo.get(parte.paymentMethod) ?? 0) + importe);
+        if (parte.paymentMethod === 'CREDIT') {
+          const nombre =
+            parte.customerId === CLIENTE_NUEVO
+              ? parte.customerName.trim() || '¿quién?'
+              : (clientes.data?.find((c) => c.id === parte.customerId)?.name ?? '¿quién?');
+          fiadoA.set(nombre, (fiadoA.get(nombre) ?? 0) + importe);
+        }
+      }
+    }
+    return { porMetodo, fiadoA };
+  }, [lineas, clientes.data]);
 
   async function guardar() {
     setError(null);
 
-    const items = lineas
-      .filter((linea) => linea.productId || linea.description.trim())
-      .map((linea) => ({
-        ...(linea.productId ? { productId: linea.productId } : {}),
-        ...(linea.description.trim() ? { description: linea.description.trim() } : {}),
-        quantity: Number(linea.quantity || 0),
-        unitPrice: Number(linea.unitPrice || 0),
-      }));
+    const items: SaleItemPayload[] = [];
+    for (const [indice, linea] of lineas.entries()) {
+      if (!linea.productId && !linea.description.trim()) continue;
+      if (Number(linea.unitPrice || 0) < 0) {
+        setError(`El precio del producto ${indice + 1} no puede ser negativo`);
+        return;
+      }
+      for (const parte of linea.partes) {
+        if (Number(parte.quantity || 0) <= 0) {
+          setError('Las cantidades deben ser mayores que cero');
+          return;
+        }
+        if (parte.paymentMethod === 'CREDIT') {
+          if (!parte.customerId || (parte.customerId === CLIENTE_NUEVO && !parte.customerName.trim())) {
+            setError('Para fiar hay que decir a quién');
+            return;
+          }
+        }
+        items.push({
+          ...(linea.productId ? { productId: linea.productId } : {}),
+          ...(linea.description.trim() ? { description: linea.description.trim() } : {}),
+          quantity: Number(parte.quantity),
+          unitPrice: Number(linea.unitPrice || 0),
+          paymentMethod: parte.paymentMethod,
+          ...(parte.paymentMethod === 'CREDIT'
+            ? parte.customerId === CLIENTE_NUEVO
+              ? { customerName: parte.customerName.trim() }
+              : { customerId: parte.customerId }
+            : {}),
+        });
+      }
+    }
 
     if (!items.length) {
       setError('Añade al menos un producto o concepto');
       return;
     }
-    if (items.some((item) => item.quantity <= 0)) {
-      setError('Las cantidades deben ser mayores que cero');
-      return;
-    }
 
     const datos: SalePayload = {
       date: fecha,
-      paymentMethod: formaDePago,
       ...(notas.trim() ? { notes: notas.trim() } : {}),
       items,
     };
@@ -153,9 +247,7 @@ export function SaleFormDialog({
       }
       onOpenChange(false);
     } catch (fallo) {
-      setError(
-        fallo instanceof ApiError ? fallo.detalle : 'No se pudo guardar la venta',
-      );
+      setError(fallo instanceof ApiError ? fallo.detalle : 'No se pudo guardar la venta');
     }
   }
 
@@ -167,7 +259,7 @@ export function SaleFormDialog({
       onOpenChange={onOpenChange}
       size="lg"
       title={venta ? 'Editar venta' : 'Nueva venta'}
-      description="Añade productos del inventario o escribe un concepto libre."
+      description="Apunta lo que se vendió y cómo se pagó cada cosa. Puede ser todo el día de una vez."
       footer={
         <>
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
@@ -180,28 +272,14 @@ export function SaleFormDialog({
       }
     >
       <div className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Fecha">
-            <Input
-              type="date"
-              value={fecha}
-              max={today()}
-              onChange={(e) => setFecha(e.target.value)}
-            />
-          </Field>
-          <Field label="Cómo te pagaron">
-            <Select
-              value={formaDePago}
-              onChange={(e) => setFormaDePago(e.target.value as PaymentMethod)}
-            >
-              {PAYMENT_METHODS.map((metodo) => (
-                <option key={metodo.value} value={metodo.value}>
-                  {metodo.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
+        <Field label="Fecha" className="sm:max-w-xs">
+          <Input
+            type="date"
+            value={fecha}
+            max={today()}
+            onChange={(e) => setFecha(e.target.value)}
+          />
+        </Field>
 
         <div>
           <div className="mb-2 flex items-center justify-between">
@@ -209,7 +287,9 @@ export function SaleFormDialog({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setLineas((previas) => [...previas, lineaVacia()])}
+              onClick={() =>
+                setLineas((previas) => [...previas, lineaVacia(formaDePagoInicial)])
+              }
             >
               <Plus className="h-4 w-4" />
               Añadir producto
@@ -219,10 +299,9 @@ export function SaleFormDialog({
           <div className="space-y-3">
             {lineas.map((linea) => {
               const producto = porId.get(linea.productId);
-              const subtotal =
-                Number(linea.quantity || 0) * Number(linea.unitPrice || 0);
               // Los granos se venden por kilos, las cervezas de una en una.
               const paso = pasoCantidad(producto?.unit);
+              const unidad = producto?.unit ?? 'ud';
 
               return (
                 <div
@@ -230,7 +309,7 @@ export function SaleFormDialog({
                   className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"
                 >
                   <div className="grid gap-2 sm:grid-cols-12">
-                    <div className="sm:col-span-5">
+                    <div className="sm:col-span-7">
                       <span className="mb-1 block text-xs font-medium text-slate-500 sm:hidden">
                         Producto
                       </span>
@@ -250,6 +329,7 @@ export function SaleFormDialog({
                         <Input
                           className="mt-2"
                           placeholder="Descripción (p. ej. recarga de celular)"
+                          aria-label="Descripción"
                           value={linea.description}
                           onChange={(e) =>
                             cambiarLinea(linea.key, { description: e.target.value })
@@ -264,48 +344,21 @@ export function SaleFormDialog({
                       )}
                     </div>
 
-                    {/* En el celular cantidad y precio comparten línea; en
-                        escritorio vuelven a ser columnas de la rejilla. */}
-                    <div className="grid grid-cols-2 gap-2 sm:contents">
-                      <div className="sm:col-span-2">
-                        <span className="mb-1 block text-xs font-medium text-slate-500 sm:hidden">
-                          Cantidad
-                        </span>
-                        <Input
-                          type="number"
-                          min={paso.min}
-                          step={paso.step}
-                          inputMode={paso.inputMode}
-                          aria-label="Cantidad"
-                          className="text-right tabular"
-                          value={linea.quantity}
-                          onChange={(e) =>
-                            cambiarLinea(linea.key, {
-                              quantity:
-                                e.target.value === '' ? '' : Number(e.target.value),
-                            })
-                          }
-                        />
-                      </div>
-
-                      <div className="sm:col-span-3">
-                        <span className="mb-1 block text-xs font-medium text-slate-500 sm:hidden">
-                          Precio
-                        </span>
-                        <MoneyInput
-                          aria-label="Precio unitario"
-                          value={linea.unitPrice}
-                          onValueChange={(valor) =>
-                            cambiarLinea(linea.key, { unitPrice: valor })
-                          }
-                        />
-                      </div>
+                    <div className="sm:col-span-3">
+                      <span className="mb-1 block text-xs font-medium text-slate-500 sm:hidden">
+                        Precio unitario
+                      </span>
+                      <MoneyInput
+                        aria-label="Precio unitario"
+                        value={linea.unitPrice}
+                        onValueChange={(valor) => cambiarLinea(linea.key, { unitPrice: valor })}
+                      />
                     </div>
 
                     <div className="flex items-center justify-between gap-2 sm:col-span-2">
                       <span className="text-xs text-slate-500 sm:hidden">Subtotal</span>
                       <span className="tabular text-sm font-medium text-slate-900">
-                        {formatMoney(subtotal, currency)}
+                        {formatMoney(subtotalLinea(linea), currency)}
                       </span>
                       {lineas.length > 1 && (
                         <Button
@@ -313,15 +366,119 @@ export function SaleFormDialog({
                           size="icon"
                           aria-label="Quitar producto"
                           onClick={() =>
-                            setLineas((previas) =>
-                              previas.filter((otra) => otra.key !== linea.key),
-                            )
+                            setLineas((previas) => previas.filter((otra) => otra.key !== linea.key))
                           }
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       )}
                     </div>
+                  </div>
+
+                  {/* Las partes: cuántas y cómo se pagó cada tanda. Una sola
+                      parte es lo normal; "Dividir" añade otra forma de pago. */}
+                  <div className="mt-2 space-y-1.5">
+                    {linea.partes.map((parte) => (
+                      <div key={parte.key} className="flex flex-wrap items-center gap-2">
+                        <Input
+                          type="number"
+                          min={paso.min}
+                          step={paso.step}
+                          inputMode={paso.inputMode}
+                          aria-label="Cantidad"
+                          className="w-24 text-right tabular"
+                          value={parte.quantity}
+                          onChange={(e) =>
+                            cambiarParte(linea.key, parte.key, {
+                              quantity: e.target.value === '' ? '' : Number(e.target.value),
+                            })
+                          }
+                        />
+                        <span className="text-xs text-slate-500">{unidad} en</span>
+                        <Select
+                          className="w-auto"
+                          value={parte.paymentMethod}
+                          aria-label="Forma de pago"
+                          onChange={(e) =>
+                            cambiarParte(linea.key, parte.key, {
+                              paymentMethod: e.target.value as PaymentMethod,
+                            })
+                          }
+                        >
+                          {SALE_PAYMENT_METHODS.map((metodo) => (
+                            <option key={metodo.value} value={metodo.value}>
+                              {metodo.label}
+                            </option>
+                          ))}
+                        </Select>
+                        {parte.paymentMethod === 'CREDIT' && (
+                          <>
+                            <span className="text-xs text-slate-500">a</span>
+                            <Select
+                              className="w-auto"
+                              value={parte.customerId}
+                              aria-label="Cliente"
+                              onChange={(e) =>
+                                cambiarParte(linea.key, parte.key, { customerId: e.target.value })
+                              }
+                            >
+                              <option value="">¿A quién?</option>
+                              {(clientes.data ?? []).map((cliente) => (
+                                <option key={cliente.id} value={cliente.id}>
+                                  {cliente.name}
+                                </option>
+                              ))}
+                              <option value={CLIENTE_NUEVO}>+ Escribir uno nuevo</option>
+                            </Select>
+                            {parte.customerId === CLIENTE_NUEVO && (
+                              <Input
+                                className="w-44"
+                                autoFocus
+                                maxLength={120}
+                                placeholder="Nombre del cliente"
+                                aria-label="Nombre del cliente nuevo"
+                                value={parte.customerName}
+                                onChange={(e) =>
+                                  cambiarParte(linea.key, parte.key, { customerName: e.target.value })
+                                }
+                              />
+                            )}
+                          </>
+                        )}
+                        {linea.partes.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Quitar parte"
+                            className="text-slate-400"
+                            onClick={() =>
+                              cambiarLinea(linea.key, {
+                                partes: linea.partes.filter((otra) => otra.key !== parte.key),
+                              })
+                            }
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-marca-700 hover:underline"
+                      onClick={() =>
+                        cambiarLinea(linea.key, {
+                          partes: [...linea.partes, parteVacia(formaDePagoInicial, '')],
+                        })
+                      }
+                    >
+                      <Split className="h-3.5 w-3.5" />
+                      Dividir: parte en otra forma de pago
+                    </button>
+                    {linea.partes.length > 1 && (
+                      <p className="text-xs text-slate-500">
+                        En total {cantidadConUnidad(cantidadLinea(linea), unidad)}.
+                      </p>
+                    )}
                   </div>
                 </div>
               );
@@ -339,16 +496,38 @@ export function SaleFormDialog({
         </Field>
 
         {error && (
-          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </p>
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         )}
 
-        <div className="flex items-center justify-between rounded-lg bg-slate-900 px-4 py-3 text-white">
-          <span className="text-sm">Total de la venta</span>
-          <span className="tabular text-xl font-bold">
-            {formatMoney(total, currency)}
-          </span>
+        <div className="rounded-lg bg-slate-900 px-4 py-3 text-white">
+          {reparto.porMetodo.size > 1 && (
+            <div className="mb-2 space-y-1 border-b border-white/15 pb-2 text-sm text-slate-300">
+              {[...reparto.porMetodo.entries()].map(([metodo, importe]) => (
+                <div key={metodo} className="flex items-center justify-between">
+                  <span>{PAYMENT_METHOD_LABELS[metodo]}</span>
+                  <span className="tabular">{formatMoney(importe, currency)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-sm">Total de la venta</span>
+            <span className="tabular text-xl font-bold">{formatMoney(total, currency)}</span>
+          </div>
+          {reparto.fiadoA.size > 0 && (
+            <div
+              className={cn(
+                'mt-2 space-y-0.5 border-t border-white/15 pt-2 text-sm text-amber-200',
+              )}
+            >
+              {[...reparto.fiadoA.entries()].map(([nombre, importe]) => (
+                <div key={nombre} className="flex items-center justify-between">
+                  <span>Fiado a {nombre}</span>
+                  <span className="tabular font-semibold">{formatMoney(importe, currency)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </Dialog>

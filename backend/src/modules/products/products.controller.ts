@@ -18,6 +18,7 @@ import {
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 import {
   AdjustStockDto,
+  ConvertStockDto,
   CreateProductDto,
   ProductQueryDto,
   StockInDto,
@@ -89,6 +90,29 @@ export class ProductsController {
     @Body() dto: StockInDto,
   ) {
     return this.products.stockIn(user.businessId, user.userId, id, dto);
+  }
+
+  @Get(':id/purchases')
+  @ApiOperation({
+    summary: 'Las compras en las que vino este producto, para corregirlas desde un ajuste',
+  })
+  purchasesOf(
+    @CurrentUser('businessId') businessId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.products.purchasesOf(businessId, id);
+  }
+
+  @Post(':id/convert')
+  @ApiOperation({
+    summary: 'Pasa mercancía a otro producto (dividir canastas, reempacar): no toca ninguna compra',
+  })
+  convert(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ConvertStockDto,
+  ) {
+    return this.products.convert(user.businessId, user.userId, id, dto);
   }
 
   @Post(':id/adjust-stock')

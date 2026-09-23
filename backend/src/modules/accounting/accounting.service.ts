@@ -19,6 +19,8 @@ import type { DateRange } from '../dashboard/dashboard.service';
  *   − Mercancia perdida        (lo danado que el proveedor no repuso)
  *   − Gastos de operar         (arriendo, servicios, nomina...)
  *   − Comisiones del datafono  (lo que se queda el banco de las ventas con tarjeta)
+ *   + Descuentos de proveedores (cruces y rebajas sobre el total de una compra;
+ *                               no tocan el costo de los productos)
  *   = Utilidad neta            (si esto es negativo, el negocio pierde)
  */
 @Injectable()
@@ -48,10 +50,11 @@ export class AccountingService {
    * (lo que tienes en mercancia frente a lo que debes).
    */
   async overview(businessId: string, range: DateRange) {
-    const [resultado, inventario, deuda, compras, abonos] = await Promise.all([
+    const [resultado, inventario, deuda, fiados, compras, abonos] = await Promise.all([
       this.profitAndLoss(businessId, range),
       this.valorInventario(businessId),
       this.deudaProveedores(businessId),
+      this.deudaClientes(businessId),
       this.comprasDelPeriodo(businessId, range),
       this.abonosDelPeriodo(businessId, range),
     ]);
@@ -65,15 +68,17 @@ export class AccountingService {
       inventoryUnits: inventario.units,
       /** Lo que se le debe a los proveedores ahora mismo. */
       supplierDebt: deuda.toFixed(2),
+      /** Lo que deben los clientes por ventas fiadas. Es dinero tuyo que aun no llego. */
+      customerDebt: fiados.toFixed(2),
       /** Mercancia comprada en el periodo (no es gasto: es inventario). */
       purchases: compras.toFixed(2),
       /** Lo que realmente salio de caja para pagar a proveedores. */
       supplierPayments: abonos.toFixed(2),
       /**
-       * Inventario menos deuda: si es negativo, debes mas de lo que tienes
-       * guardado en mercancia.
+       * Inventario mas fiados menos deuda: si es negativo, debes mas de lo
+       * que tienes en mercancia y por cobrar.
        */
-      workingCapital: money(toDecimal(inventario.value).minus(deuda)).toFixed(2),
+      workingCapital: money(toDecimal(inventario.value).plus(fiados).minus(deuda)).toFixed(2),
       verdict: utilidadNeta.greaterThan(0)
         ? ('profit' as const)
         : utilidadNeta.lessThan(0)
@@ -93,7 +98,7 @@ export class AccountingService {
       },
     };
 
-    const [ventas, gastos, costo, merma] = await Promise.all([
+    const [ventas, gastos, costo, merma, descuentos] = await Promise.all([
       this.prisma.sale.aggregate({
         where,
         _sum: { total: true, cardFee: true },
@@ -106,12 +111,14 @@ export class AccountingService {
         _sum: { lossAmount: true },
         _count: true,
       }),
+      this.prisma.purchase.aggregate({ where, _sum: { discount: true } }),
     ]);
 
     const sales = money(ventas._sum.total ?? 0);
     const operatingExpenses = money(gastos._sum.amount ?? 0);
     const losses = money(merma._sum.lossAmount ?? 0);
     const cardFees = money(ventas._sum.cardFee ?? 0);
+    const supplierDiscounts = money(descuentos._sum.discount ?? 0);
     const grossProfit = money(sales.minus(costo));
 
     return {
@@ -121,8 +128,13 @@ export class AccountingService {
       losses,
       operatingExpenses,
       cardFees,
+      supplierDiscounts,
       netProfit: money(
-        grossProfit.minus(losses).minus(operatingExpenses).minus(cardFees),
+        grossProfit
+          .minus(losses)
+          .minus(operatingExpenses)
+          .minus(cardFees)
+          .plus(supplierDiscounts),
       ),
       salesCount: ventas._count,
       expensesCount: gastos._count,
@@ -177,6 +189,24 @@ export class AccountingService {
     return money(fila?.debt ?? 0);
   }
 
+  private async deudaClientes(businessId: string) {
+    // Lo fiado en las lineas de venta menos lo que los clientes han pagado.
+    const [fila] = await this.prisma.$queryRaw<{ debt: Prisma.Decimal | null }[]>`
+      SELECT
+        COALESCE((
+          SELECT SUM(si.subtotal) FROM sale_items si
+          JOIN sales s ON s.id = si.sale_id
+          WHERE s.business_id = ${businessId}::uuid AND si.payment_method = 'CREDIT'
+        ), 0)
+        - COALESCE((
+          SELECT SUM(amount) FROM customer_payments
+          WHERE business_id = ${businessId}::uuid
+        ), 0) AS debt
+    `;
+
+    return money(fila?.debt ?? 0);
+  }
+
   private async comprasDelPeriodo(businessId: string, range: DateRange) {
     const agregado = await this.prisma.purchase.aggregate({
       where: {
@@ -221,6 +251,8 @@ export class AccountingService {
       operatingExpenses: datos.operatingExpenses.toFixed(2),
       /** Lo que se quedo el datafono de las ventas con tarjeta. */
       cardFees: datos.cardFees.toFixed(2),
+      /** Cruces y rebajas de los proveedores sobre el total de las compras. */
+      supplierDiscounts: datos.supplierDiscounts.toFixed(2),
       netProfit: datos.netProfit.toFixed(2),
       netMargin: porcentaje(datos.netProfit, datos.sales),
       salesCount: datos.salesCount,

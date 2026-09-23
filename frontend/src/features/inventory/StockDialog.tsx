@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 
-import { useAdjustStock, useStockIn } from './api';
+import { useAdjustStock, useProductPurchases, useStockIn } from './api';
 import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
 import { useAuth } from '@/features/auth/auth-context';
 import { ApiError } from '@/shared/api/client';
 import type { Product } from '@/shared/api/types';
 import { cn } from '@/shared/lib/cn';
+import { formatDate } from '@/shared/lib/dates';
 import { formatMoney, toNumber } from '@/shared/lib/money';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
-import { Field, Input, MoneyInput, Textarea } from '@/shared/ui/field';
+import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
 
 export type ModoStock = 'entrada' | 'ajuste';
 
@@ -32,7 +33,12 @@ export function StockDialog({
   const [costoUnitario, setCostoUnitario] = useState<number | ''>('');
   const [contado, setContado] = useState<number | ''>('');
   const [motivo, setMotivo] = useState('');
+  const [compraId, setCompraId] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Las compras en las que vino el producto, por si la diferencia es de una.
+  const compras = useProductPurchases(open ? (producto?.id ?? null) : null);
+  const compra = (compras.data ?? []).find((c) => c.purchaseId === compraId) ?? null;
 
   const stockActual = toNumber(producto?.stock);
   const unidad = producto?.unit ?? 'ud';
@@ -46,11 +52,20 @@ export function StockDialog({
     setCantidad('');
     setCostoUnitario('');
     setMotivo('');
+    setCompraId('');
     setContado(toNumber(producto?.stock));
   }, [open, producto]);
 
   const resultante = stockActual + Number(cantidad || 0);
   const diferencia = Number(contado || 0) - stockActual;
+  // Lo que cambia en la compra elegida, para verlo antes de guardar.
+  const deltaCompra = modo === 'entrada' ? Number(cantidad || 0) : diferencia;
+  const compraNueva = compra
+    ? {
+        cantidad: toNumber(compra.quantity) + deltaCompra,
+        total: toNumber(compra.total) + deltaCompra * toNumber(compra.unitCost),
+      }
+    : null;
 
   async function guardar() {
     if (!producto) return;
@@ -69,6 +84,7 @@ export function StockDialog({
             quantity: unidades,
             ...(costoUnitario === '' ? {} : { unitCost: Number(costoUnitario) }),
             ...(motivo.trim() ? { reason: motivo.trim() } : {}),
+            ...(compraId ? { purchaseId: compraId } : {}),
           },
         });
       } else {
@@ -81,6 +97,7 @@ export function StockDialog({
           datos: {
             stock: Number(contado),
             ...(motivo.trim() ? { reason: motivo.trim() } : {}),
+            ...(compraId ? { purchaseId: compraId } : {}),
           },
         });
       }
@@ -144,6 +161,7 @@ export function StockDialog({
                 step={paso.step}
                 inputMode={paso.inputMode}
                 autoFocus
+                aria-label="Cantidad que entra"
                 className="text-right tabular"
                 value={cantidad}
                 onChange={(e) =>
@@ -192,6 +210,7 @@ export function StockDialog({
                 step={paso.step}
                 inputMode={paso.inputMode}
                 autoFocus
+                aria-label="Stock real contado"
                 className="text-right tabular"
                 value={contado}
                 onChange={(e) =>
@@ -221,6 +240,64 @@ export function StockDialog({
               </span>
             </div>
           </>
+        )}
+
+        {/* Si la diferencia viene de una compra mal apuntada, la compra se
+            corrige con ella. Si no (una canasta dividida, una rotura), solo
+            se mueve el inventario. */}
+        {(compras.data?.length ?? 0) > 0 && (
+          <Field
+            label="¿Corrige alguna compra?"
+            hint={
+              compraId
+                ? 'La compra cambia con este ajuste: su cantidad, su total y lo que se le debe al proveedor.'
+                : 'Si eliges una, la cantidad de esa compra cambia con este ajuste. Si no, solo se mueve el inventario.'
+            }
+          >
+            <Select
+              value={compraId}
+              onChange={(e) => setCompraId(e.target.value)}
+              aria-label="Compra que corrige"
+            >
+              <option value="">No, solo el inventario</option>
+              {(compras.data ?? []).map((c) => (
+                <option key={c.itemId} value={c.purchaseId}>
+                  {formatDate(c.date)}
+                  {c.invoiceNumber ? ` · ${c.invoiceNumber}` : ''}
+                  {c.supplier ? ` · ${c.supplier}` : ''} · trajo{' '}
+                  {cantidadConUnidad(c.quantity, unidad)} a{' '}
+                  {formatMoney(c.unitCost, currency)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+
+        {compra && compraNueva && deltaCompra !== 0 && (
+          <div
+            className={cn(
+              'space-y-1 rounded-lg px-4 py-3 text-sm',
+              compraNueva.cantidad > 0 ? 'bg-amber-50 text-amber-900' : 'bg-red-50 text-red-700',
+            )}
+          >
+            <p className="flex justify-between gap-3">
+              <span>La compra pasa de {cantidadConUnidad(compra.quantity, unidad)} a</span>
+              <span className="tabular font-semibold">
+                {cantidadConUnidad(compraNueva.cantidad, unidad)}
+              </span>
+            </p>
+            <p className="flex justify-between gap-3">
+              <span>Su total, de {formatMoney(compra.total, currency)} a</span>
+              <span className="tabular font-semibold">
+                {formatMoney(compraNueva.total, currency)}
+              </span>
+            </p>
+            {compraNueva.cantidad <= 0 && (
+              <p className="text-xs">
+                La compra no puede quedar sin este producto: si no trajo nada, bórrala.
+              </p>
+            )}
+          </div>
         )}
 
         <Field label="Motivo (opcional)">

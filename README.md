@@ -16,6 +16,8 @@ abrirlo a más clientes no obliga a reescribir nada.
 | **Ventas** | Cada venta tiene líneas: pueden ser productos del inventario (descuentan stock) o conceptos libres (servicios, recargas, lo que no está catalogado). |
 | **Gastos** | Con categorías, forma de pago y notas. |
 | **Inventario** | Productos con costo promedio ponderado y precio de venta, stock mínimo, entradas de mercancía y ajustes por conteo físico. Cada movimiento queda registrado. |
+| **Fiados** | Cada línea de una venta puede ir fiada a un cliente: sale del inventario y cuenta como venta ese día, pero suma en el cuaderno de esa persona. Se cobra por partes desde Fiados; cada cobro entra a la caja o a la cuenta el día que se recibe. |
+| **Pedidos a proveedor** | La cuenta a mano pasada a la app: cantidad, producto (del inventario o libre), valor unitario y total, numerada, en PDF para mandársela al proveedor. Cuando llega la mercancía, "Registrar como compra" la convierte en compra sin volver a teclear. |
 | **Compras y deudas** | Las compras a proveedor entran al inventario (no son gasto) y pueden quedar a deber: se van pagando con abonos parciales y la app lleva el saldo por proveedor, con aviso de lo vencido. Lo que ya se debía antes de usar Arqueo se apunta como **deuda anterior**. |
 | **Pérdidas** | Mercancía dañada, vencida o robada. Sale del inventario siempre, pero lo que pierdes depende del proveedor: si la repone gratis no pierdes nada, si la repone cobrando pierdes solo eso, y si no la repone pierdes el costo entero. Los casos sin respuesta quedan marcados hasta que el proveedor conteste. |
 | **Contabilidad** | Estado de resultados de verdad: ventas − costo de lo vendido = utilidad bruta; menos la mercancía perdida y los gastos de operar = utilidad neta. Con un veredicto claro de si el negocio gana o pierde, más el valor del inventario y la deuda pendiente. |
@@ -135,7 +137,7 @@ login y `/health`. Documentación interactiva en `/docs`.
 |---|---|
 | **auth** | `POST /auth/register` · `POST /auth/login` · `GET /auth/me` · `PATCH /auth/password` |
 | **business** | `GET /business` · `PATCH /business` |
-| **products** | `GET /products` · `POST` · `GET /:id` · `PATCH /:id` · `DELETE /:id` · `POST /:id/stock-in` · `POST /:id/adjust-stock` · `GET /:id/movements` · `GET /products/low-stock` |
+| **products** | `GET /products` · `POST` · `GET /:id` · `PATCH /:id` · `DELETE /:id` · `POST /:id/stock-in` · `POST /:id/adjust-stock` (ambos con `purchaseId` opcional) · `POST /:id/convert` · `GET /:id/purchases` · `GET /:id/movements` · `GET /products/low-stock` |
 | **purchases** | `GET /purchases` · `POST` · `GET /:id` · `DELETE /:id` · `POST /:id/payments` · `DELETE /:id/payments/:paymentId` · `GET /purchases/debt` · `POST /purchases/opening-balance` |
 | **suppliers** | `GET` · `POST` · `PATCH /:id` · `DELETE /:id` |
 | **losses** | `GET /losses` · `POST` · `GET /:id` · `PATCH /:id/resolve` · `DELETE /:id` · `GET /losses/summary` |
@@ -143,6 +145,8 @@ login y `/health`. Documentación interactiva en `/docs`.
 | **sales** | `GET /sales` · `POST` · `GET /:id` · `PUT /:id` · `DELETE /:id` |
 | **expenses** | `GET /expenses` · `POST` · `GET /:id` · `PATCH /:id` · `DELETE /:id` |
 | **expense-categories** | `GET` · `POST` · `PATCH /:id` · `DELETE /:id` |
+| **purchase-orders** | `GET /purchase-orders` · `POST` · `GET /:id` · `GET /:id/pdf` · `PUT /:id` · `DELETE /:id` |
+| **customers** | `GET /customers` · `GET /customers/debt` · `GET /:id/account` · `POST` · `PATCH /:id` · `DELETE /:id` · `POST /:id/payments` · `DELETE /:id/payments/:paymentId` |
 | **cash-closings** | `GET` · `GET /preview?date` · `POST` · `GET /:id` · `PATCH /:id` · `DELETE /:id` |
 | **bank-account** | `GET /summary` · `GET /preview?date` · `GET /closings` · `POST /closings` · `GET /closings/:id` · `PATCH /closings/:id` · `DELETE /closings/:id` · `GET /movements` · `POST /movements` · `DELETE /movements/:id` |
 | **dashboard** | `GET /dashboard/summary` · `/timeseries` · `/sales-by-payment-method` · `/expenses-by-category` · `/top-products` · `/low-stock` |
@@ -193,10 +197,41 @@ Ajustes y cada venta con tarjeta guarda lo que se quedó el datáfono
 reescribe el pasado. Esa comisión entra a la cuenta descontada y resta en la
 utilidad neta.
 
+**La forma de pago va en cada línea, no en la venta.** El dueño apunta el día
+entero de una vez: seis arepas, de las que dos fueron en efectivo, dos por
+transferencia y dos fiadas a Marta. Eso son tres líneas del mismo producto
+(`SaleItem.paymentMethod`, y `customerId` en las fiadas). La caja, la cuenta y
+el reparto por forma de pago se calculan sumando líneas, no ventas.
+
+**Fiar es vender, no cobrar.** Una línea fiada es una venta normal el día que
+se hace: sale el stock, suma en ventas y su costo va al costo de lo vendido. El
+dinero llega después, con cada cobro al cliente (`CustomerPayment`), que cuenta
+en la caja (efectivo) o en la cuenta (transferencia, tarjeta) en su propia
+fecha. El cuaderno de cada cliente es lo fiado menos lo cobrado, sin atar cada
+cobro a una venta concreta, como en el papel. Lo que deben todos aparece en
+Contabilidad como "Fiados por cobrar", dentro de lo que el negocio tiene.
+
 **Al proveedor se le puede ir pagando de a poco.** Una compra guarda su total y
 lo abonado; cada abono es una salida de caja de verdad (y se descuenta en el
 cierre de caja si fue en efectivo), mientras que la compra en sí no toca la
 caja hasta que se paga.
+
+**El descuento del proveedor no toca el costo de los productos.** Si la compra
+suma 90.000 y el proveedor resta 15.000 (un cruce, una devolución, una
+promoción), se le deben 75.000 pero cada producto entra al inventario al precio
+de su línea: el dueño ve el descuento como un acuerdo aparte, no como mercancía
+más barata. Para que las cuentas cuadren, esos 15.000 aparecen en el estado de
+resultados como "Descuentos de proveedores", sumando a la utilidad neta del
+periodo de la compra. `Purchase` guarda `subtotal`, `discount` y `total`.
+
+**Un ajuste de stock decide si corrige una compra o no.** Contar y encontrar
+una diferencia no siempre significa lo mismo. Si viene de una compra mal
+apuntada (llegaron 9 canastas, no 10), el ajuste se liga a esa compra y su
+línea, su total y su deuda cambian con él (`purchaseId` en `adjust-stock` y
+`stock-in`); nunca por debajo de lo ya abonado. Si no viene de ninguna (una
+rotura, una canasta dividida), solo se mueve el inventario. Dividir o reempacar
+tiene su propia acción (`POST /products/:id/convert`): pasa mercancía de un
+producto a otro llevándose su costo, sin tocar ninguna compra.
 
 **Borrar una compra la deshace del todo.** Saca del inventario lo que entró y
 devuelve el costo del producto a como estaba: cada línea guarda el costo previo

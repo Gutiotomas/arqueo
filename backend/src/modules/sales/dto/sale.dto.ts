@@ -47,6 +47,69 @@ export class SaleItemDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   unitPrice!: number;
+
+  @ApiProperty({
+    enum: PaymentMethod,
+    example: PaymentMethod.CASH,
+    description: 'Como se pago esta parte. CREDIT = fiado: hay que decir a quien.',
+  })
+  @IsEnum(PaymentMethod, { message: 'Método de pago inválido' })
+  paymentMethod!: PaymentMethod;
+
+  @ApiPropertyOptional({ format: 'uuid', description: 'A quien se le fio (cliente ya registrado)' })
+  @IsOptional()
+  @IsUUID('4')
+  customerId?: string;
+
+  @ApiPropertyOptional({ example: 'Doña Marta', description: 'Cliente nuevo: se crea sobre la marcha' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  customerName?: string;
+}
+
+/** Un cobro a un cliente que debe. */
+export class CustomerPaymentDto {
+  @ApiProperty({ example: '2026-09-23' })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'La fecha debe tener formato YYYY-MM-DD' })
+  date!: string;
+
+  @ApiProperty({ example: 20000 })
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01, { message: 'El cobro debe ser mayor que cero' })
+  amount!: number;
+
+  @ApiProperty({ enum: PaymentMethod, example: PaymentMethod.CASH, description: 'Con que pago el cliente (no puede ser CREDIT)' })
+  @IsEnum(PaymentMethod, { message: 'Método de pago inválido' })
+  paymentMethod!: PaymentMethod;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  notes?: string;
+}
+
+export class CustomerDto {
+  @ApiProperty({ example: 'Doña Marta' })
+  @IsString()
+  @IsNotEmpty({ message: 'El nombre del cliente es obligatorio' })
+  @MaxLength(120)
+  name!: string;
+
+  @ApiPropertyOptional({ example: '300 123 4567' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  notes?: string;
 }
 
 export class CreateSaleDto {
@@ -54,9 +117,6 @@ export class CreateSaleDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'La fecha debe tener formato YYYY-MM-DD' })
   date!: string;
 
-  @ApiProperty({ enum: PaymentMethod, example: PaymentMethod.CASH })
-  @IsEnum(PaymentMethod, { message: 'Método de pago inválido' })
-  paymentMethod!: PaymentMethod;
 
   @ApiProperty({ type: [SaleItemDto] })
   @IsArray()
@@ -86,10 +146,15 @@ export class SaleQueryDto extends PaginationQueryDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'to debe tener formato YYYY-MM-DD' })
   to?: string;
 
-  @ApiPropertyOptional({ enum: PaymentMethod })
+  @ApiPropertyOptional({ enum: PaymentMethod, description: 'Ventas con alguna linea pagada asi' })
   @IsOptional()
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID('4')
+  customerId?: string;
 
   @ApiPropertyOptional({ description: 'Busca en notas y en la descripción de las líneas' })
   @IsOptional()

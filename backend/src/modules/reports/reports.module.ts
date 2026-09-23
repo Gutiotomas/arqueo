@@ -12,5 +12,6 @@ import { SupplierStatementService } from './supplier-statement.service';
   imports: [DashboardModule, AccountingModule],
   controllers: [ReportsController],
   providers: [ReportsService, SupplierStatementService, PdfRenderer, ExcelRenderer],
+  exports: [PdfRenderer],
 })
 export class ReportsModule {}
