@@ -49,8 +49,9 @@ function EstadoPago({ venta, currency }: { venta: Sale; currency: string }) {
     }
   }
   const unica = porMetodo.size === 1;
+  // En una columna estrecha: dos etiquetas por línea, y el "a quién" debajo.
   return (
-    <span className="inline-flex flex-wrap items-center gap-1">
+    <span className="flex max-w-80 flex-wrap items-center gap-1">
       {[...porMetodo.entries()].map(([metodo, importe]) => (
         <Badge
           key={metodo}
@@ -280,7 +281,7 @@ export function SalesPage() {
                             <p className="mt-1 text-xs text-slate-500">{venta.notes}</p>
                           )}
                         </Td>
-                        <Td>
+                        <Td className="w-80">
                           <EstadoPago venta={venta} currency={currency} />
                         </Td>
                         <Td align="right" className="font-medium text-slate-900">
