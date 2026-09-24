@@ -10,6 +10,7 @@ import type { Paginated, Product, PurchaseOrder } from '@/shared/api/types';
 import { today } from '@/shared/lib/dates';
 import { formatMoney, toNumber } from '@/shared/lib/money';
 import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
+import { useEnfocarNuevo } from '@/shared/lib/use-enfocar-nuevo';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
@@ -26,7 +27,7 @@ interface Linea {
 }
 
 function lineaVacia(): Linea {
-  return { key: crypto.randomUUID(), productId: '', description: '', quantity: 1, unitPrice: '' };
+  return { key: crypto.randomUUID(), productId: '', description: '', quantity: '', unitPrice: '' };
 }
 
 /**
@@ -44,6 +45,7 @@ export function OrderFormDialog({
 }) {
   const { currency } = useAuth();
   const crear = useCreateOrder();
+  const enfocar = useEnfocarNuevo();
   const actualizar = useUpdateOrder();
   const proveedores = useSuppliers();
 
@@ -217,7 +219,11 @@ export function OrderFormDialog({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setLineas((previas) => [...previas, lineaVacia()])}
+              onClick={() => {
+                const nueva = lineaVacia();
+                setLineas((previas) => [...previas, nueva]);
+                enfocar(nueva.key);
+              }}
             >
               <Plus className="h-4 w-4" />
               Añadir producto
@@ -231,6 +237,7 @@ export function OrderFormDialog({
               return (
                 <div
                   key={linea.key}
+                  data-nuevo={linea.key}
                   className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"
                 >
                   <div className="grid gap-2 sm:grid-cols-12">

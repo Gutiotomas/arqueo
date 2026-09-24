@@ -123,7 +123,7 @@ export function LossFormDialog({
 
   const [productId, setProductId] = useState(productoInicial ?? '');
   const [fecha, setFecha] = useState(today());
-  const [cantidad, setCantidad] = useState<number | ''>(1);
+  const [cantidad, setCantidad] = useState<number | ''>('');
   const [motivo, setMotivo] = useState<LossReason>('DAMAGED');
   const [respuesta, setRespuesta] = useState<LossResolution>('PENDING');
   const [costoReposicion, setCostoReposicion] = useState<number | ''>('');

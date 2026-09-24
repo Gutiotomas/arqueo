@@ -15,6 +15,7 @@ import { cn } from '@/shared/lib/cn';
 import { today } from '@/shared/lib/dates';
 import { formatMoney, roundMoney, toNumber } from '@/shared/lib/money';
 import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
+import { useEnfocarNuevo } from '@/shared/lib/use-enfocar-nuevo';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
@@ -39,7 +40,7 @@ interface Linea {
 }
 
 function lineaVacia(): Linea {
-  return { key: crypto.randomUUID(), productId: '', quantity: 1, unitCost: '' };
+  return { key: crypto.randomUUID(), productId: '', quantity: '', unitCost: '' };
 }
 
 /** Lo que llega de un pedido para no volver a teclearlo. */
@@ -61,6 +62,7 @@ export function PurchaseFormDialog({
 }) {
   const { currency } = useAuth();
   const crear = useCreatePurchase();
+  const enfocar = useEnfocarNuevo();
   const proveedores = useSuppliers();
 
   const [fecha, setFecha] = useState(today());
@@ -306,7 +308,11 @@ export function PurchaseFormDialog({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setLineas((previas) => [...previas, lineaVacia()])}
+              onClick={() => {
+                const nueva = lineaVacia();
+                setLineas((previas) => [...previas, nueva]);
+                enfocar(nueva.key);
+              }}
             >
               <Plus className="h-4 w-4" />
               Añadir producto
@@ -324,6 +330,7 @@ export function PurchaseFormDialog({
               return (
                 <div
                   key={linea.key}
+                  data-nuevo={linea.key}
                   className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"
                 >
                   <div className="grid gap-2 sm:grid-cols-12">

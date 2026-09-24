@@ -17,6 +17,7 @@ import { cn } from '@/shared/lib/cn';
 import { today } from '@/shared/lib/dates';
 import { formatMoney, toNumber } from '@/shared/lib/money';
 import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
+import { useEnfocarNuevo } from '@/shared/lib/use-enfocar-nuevo';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
@@ -45,7 +46,7 @@ interface Linea {
   partes: Parte[];
 }
 
-function parteVacia(paymentMethod: PaymentMethod, quantity: number | '' = 1): Parte {
+function parteVacia(paymentMethod: PaymentMethod, quantity: number | '' = ''): Parte {
   return { key: crypto.randomUUID(), quantity, paymentMethod, customerId: '', customerName: '' };
 }
 
@@ -99,6 +100,7 @@ export function SaleFormDialog({
 }) {
   const { currency } = useAuth();
   const crear = useCreateSale();
+  const enfocar = useEnfocarNuevo();
   const actualizar = useUpdateSale();
   const clientes = useCustomers();
 
@@ -287,9 +289,11 @@ export function SaleFormDialog({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() =>
-                setLineas((previas) => [...previas, lineaVacia(formaDePagoInicial)])
-              }
+              onClick={() => {
+                const nueva = lineaVacia(formaDePagoInicial);
+                setLineas((previas) => [...previas, nueva]);
+                enfocar(nueva.key);
+              }}
             >
               <Plus className="h-4 w-4" />
               Añadir producto
@@ -306,6 +310,7 @@ export function SaleFormDialog({
               return (
                 <div
                   key={linea.key}
+                  data-nuevo={linea.key}
                   className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"
                 >
                   <div className="grid gap-2 sm:grid-cols-12">
@@ -379,7 +384,11 @@ export function SaleFormDialog({
                       parte es lo normal; "Dividir" añade otra forma de pago. */}
                   <div className="mt-2 space-y-1.5">
                     {linea.partes.map((parte) => (
-                      <div key={parte.key} className="flex flex-wrap items-center gap-2">
+                      <div
+                        key={parte.key}
+                        data-nuevo={parte.key}
+                        className="flex flex-wrap items-center gap-2"
+                      >
                         <Input
                           type="number"
                           min={paso.min}
@@ -465,11 +474,11 @@ export function SaleFormDialog({
                     <button
                       type="button"
                       className="inline-flex items-center gap-1 text-xs font-medium text-marca-700 hover:underline"
-                      onClick={() =>
-                        cambiarLinea(linea.key, {
-                          partes: [...linea.partes, parteVacia(formaDePagoInicial, '')],
-                        })
-                      }
+                      onClick={() => {
+                        const nueva = parteVacia(formaDePagoInicial);
+                        cambiarLinea(linea.key, { partes: [...linea.partes, nueva] });
+                        enfocar(nueva.key);
+                      }}
                     >
                       <Split className="h-3.5 w-3.5" />
                       Dividir: parte en otra forma de pago
