@@ -254,7 +254,17 @@ export class BankAccountService {
   private async flujos(businessId: string, tramo: Tramo) {
     const fechas = { gt: tramo.desde, lte: tramo.hasta };
 
-    const [transferencias, tarjeta, comisiones, cobros, gastos, abonos, reposiciones, movimientos] =
+    const [
+      transferencias,
+      tarjeta,
+      comisiones,
+      cobros,
+      gastos,
+      abonos,
+      reposiciones,
+      movimientos,
+      repartos,
+    ] =
       await Promise.all([
         this.prisma.saleItem.aggregate({
           where: { paymentMethod: 'TRANSFER', sale: { businessId, date: fechas } },
@@ -303,6 +313,14 @@ export class BankAccountService {
           where: { businessId, date: fechas },
           _sum: { amount: true },
         }),
+        // Lo repartido a las socias por transferencia o tarjeta sale de la cuenta.
+        this.prisma.profitDistributionItem.aggregate({
+          where: {
+            paymentMethod: { in: MEDIOS_DE_CUENTA },
+            distribution: { businessId, date: fechas },
+          },
+          _sum: { amount: true },
+        }),
       ]);
 
     const porTipo = new Map(
@@ -327,6 +345,7 @@ export class BankAccountService {
       cashWithdrawals: porTipo.get('CASH_WITHDRAWAL') ?? CERO,
       otherIn: porTipo.get('OTHER_IN') ?? CERO,
       otherOut: porTipo.get('OTHER_OUT') ?? CERO,
+      partnerWithdrawals: repartos._sum.amount ?? CERO,
     };
 
     const neto = money(
@@ -339,7 +358,8 @@ export class BankAccountService {
         .minus(flujos.expenses)
         .minus(flujos.supplierPayments)
         .minus(flujos.cashWithdrawals)
-        .minus(flujos.otherOut),
+        .minus(flujos.otherOut)
+        .minus(flujos.partnerWithdrawals),
     );
 
     return { ...flujos, neto };
@@ -362,6 +382,7 @@ export class BankAccountService {
       cashWithdrawals: flujos.cashWithdrawals.toFixed(2),
       otherIn: flujos.otherIn.toFixed(2),
       otherOut: flujos.otherOut.toFixed(2),
+      partnerWithdrawals: flujos.partnerWithdrawals.toFixed(2),
       net: flujos.neto.toFixed(2),
     };
   }

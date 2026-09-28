@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
 import { parseBusinessDate, previousRange } from '../../common/utils/dates';
-import { money, toDecimal } from '../../common/utils/money';
+import { money, sumDecimals, toDecimal } from '../../common/utils/money';
 import type { DateRange } from '../dashboard/dashboard.service';
 
 /**
@@ -50,16 +50,18 @@ export class AccountingService {
    * (lo que tienes en mercancia frente a lo que debes).
    */
   async overview(businessId: string, range: DateRange) {
-    const [resultado, inventario, deuda, fiados, compras, abonos] = await Promise.all([
+    const [resultado, inventario, deuda, fiados, compras, abonos, repartos] = await Promise.all([
       this.profitAndLoss(businessId, range),
       this.valorInventario(businessId),
       this.deudaProveedores(businessId),
       this.deudaClientes(businessId),
       this.comprasDelPeriodo(businessId, range),
       this.abonosDelPeriodo(businessId, range),
+      this.repartosDelPeriodo(businessId, range),
     ]);
 
     const utilidadNeta = toDecimal(resultado.netProfit);
+    const repartido = sumDecimals(repartos.map((fila) => fila.amount));
 
     return {
       ...resultado,
@@ -79,6 +81,18 @@ export class AccountingService {
        * que tienes en mercancia y por cobrar.
        */
       workingCapital: money(toDecimal(inventario.value).plus(fiados).minus(deuda)).toFixed(2),
+      /**
+       * Ganancias repartidas a las socias en el periodo. No es gasto: la
+       * utilidad neta no cambia, pero ese dinero ya no esta en el negocio.
+       */
+      distributed: repartido.toFixed(2),
+      /** Utilidad neta menos lo repartido: lo que el periodo dejo en el negocio. */
+      retained: money(utilidadNeta.minus(repartido)).toFixed(2),
+      distributedByPartner: repartos.map((fila) => ({
+        partnerId: fila.partnerId,
+        name: fila.name,
+        amount: fila.amount.toFixed(2),
+      })),
       verdict: utilidadNeta.greaterThan(0)
         ? ('profit' as const)
         : utilidadNeta.lessThan(0)
@@ -222,6 +236,38 @@ export class AccountingService {
     });
 
     return money(agregado._sum.total ?? 0);
+  }
+
+  /** Lo repartido a cada socia en el periodo. */
+  private async repartosDelPeriodo(businessId: string, range: DateRange) {
+    const filas = await this.prisma.profitDistributionItem.groupBy({
+      by: ['partnerId'],
+      where: {
+        distribution: {
+          businessId,
+          date: {
+            gte: parseBusinessDate(range.from),
+            lte: parseBusinessDate(range.to),
+          },
+        },
+      },
+      _sum: { amount: true },
+    });
+    if (!filas.length) return [];
+
+    const socias = await this.prisma.partner.findMany({
+      where: { id: { in: filas.map((fila) => fila.partnerId) } },
+      select: { id: true, name: true },
+    });
+    const nombre = new Map(socias.map((socia) => [socia.id, socia.name]));
+
+    return filas
+      .map((fila) => ({
+        partnerId: fila.partnerId,
+        name: nombre.get(fila.partnerId) ?? 'Socia',
+        amount: money(fila._sum.amount ?? 0),
+      }))
+      .sort((a, b) => b.amount.comparedTo(a.amount));
   }
 
   private async abonosDelPeriodo(businessId: string, range: DateRange) {

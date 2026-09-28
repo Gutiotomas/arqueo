@@ -9,6 +9,7 @@ import {
   Receipt,
   Trash2,
   TrendingUp,
+  Users,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
@@ -654,6 +655,14 @@ function DesgloseCuenta({
       etiqueta: 'Sacado para la caja',
       detalle: 'Lo que retiraste del banco en efectivo',
       valor: `− ${formatMoney(m.cashWithdrawals, currency)}`,
+    },
+    {
+      mostrar: toNumber(m.partnerWithdrawals) > 0,
+      icono: <Users className="h-4 w-4" />,
+      tono: 'naranja' as const,
+      etiqueta: 'Ganancias repartidas',
+      detalle: 'Lo que se llevaron las socias por transferencia o tarjeta',
+      valor: `− ${formatMoney(m.partnerWithdrawals, currency)}`,
     },
     {
       mostrar: toNumber(m.otherOut) > 0,

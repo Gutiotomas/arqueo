@@ -79,6 +79,13 @@ export class ExcelRenderer {
           ][])
         : []),
       ['UTILIDAD NETA', data.kpis.profit, true],
+      // Repartir no es gastar: va debajo de la utilidad, no la cambia.
+      ...(Number(data.kpis.distributed) > 0
+        ? ([
+            ['Repartido a las socias', `-${data.kpis.distributed}`, false],
+            ['Queda en el negocio', data.kpis.retained, true],
+          ] as [string, string, boolean][])
+        : []),
     ];
     for (const [etiqueta, valor, destacar] of resultado) {
       const fila = hoja.addRow([etiqueta, Number(valor)]);

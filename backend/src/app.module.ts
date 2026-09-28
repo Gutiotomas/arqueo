@@ -18,6 +18,7 @@ import { HealthModule } from './modules/health/health.module';
 import { LossesModule } from './modules/losses/losses.module';
 import { ProductCategoriesModule } from './modules/product-categories/product-categories.module';
 import { ProductsModule } from './modules/products/products.module';
+import { PartnersModule } from './modules/partners/partners.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { PurchasesModule } from './modules/purchases/purchases.module';
 import { ReportsModule } from './modules/reports/reports.module';
@@ -37,6 +38,7 @@ import { SalesModule } from './modules/sales/sales.module';
     ProductsModule,
     PurchasesModule,
     PurchaseOrdersModule,
+    PartnersModule,
     LossesModule,
     SalesModule,
     ExpenseCategoriesModule,

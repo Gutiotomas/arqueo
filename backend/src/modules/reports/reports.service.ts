@@ -36,6 +36,10 @@ export interface ReportData {
     supplierDiscounts: string;
     /** Utilidad neta: bruta menos gastos de operar. */
     profit: string;
+    /** Ganancias repartidas a las socias en el periodo (no es gasto). */
+    distributed: string;
+    /** Utilidad neta menos lo repartido. */
+    retained: string;
     salesCount: number;
     expensesCount: number;
     averageTicket: string;
@@ -192,6 +196,8 @@ export class ReportsService {
         cardFees: contabilidad.cardFees,
         supplierDiscounts: contabilidad.supplierDiscounts,
         profit: contabilidad.netProfit,
+        distributed: contabilidad.distributed,
+        retained: contabilidad.retained,
         salesCount: summary.salesCount,
         expensesCount: summary.expensesCount,
         averageTicket: summary.averageTicket,

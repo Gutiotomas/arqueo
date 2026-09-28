@@ -18,6 +18,7 @@ abrirlo a más clientes no obliga a reescribir nada.
 | **Inventario** | Productos con costo promedio ponderado y precio de venta, stock mínimo, entradas de mercancía y ajustes por conteo físico. Cada movimiento queda registrado. |
 | **Fiados** | Cada línea de una venta puede ir fiada a un cliente: sale del inventario y cuenta como venta ese día, pero suma en el cuaderno de esa persona. Se cobra por partes desde Fiados; cada cobro entra a la caja o a la cuenta el día que se recibe. |
 | **Pedidos a proveedor** | La cuenta a mano pasada a la app: cantidad, producto (del inventario o libre), valor unitario y total, numerada, en PDF para mandársela al proveedor. Cuando llega la mercancía, "Registrar como compra" la convierte en compra sin volver a teclear. |
+| **Reparto de ganancias** | Las socias y su porcentaje se configuran en Ajustes. Un reparto no es gasto: la utilidad no cambia, pero Contabilidad muestra lo repartido y lo que queda en el negocio, y lo pagado en efectivo sale de la caja y lo transferido, de la cuenta. |
 | **Compras y deudas** | Las compras a proveedor entran al inventario (no son gasto) y pueden quedar a deber: se van pagando con abonos parciales y la app lleva el saldo por proveedor, con aviso de lo vencido. Lo que ya se debía antes de usar Arqueo se apunta como **deuda anterior**. |
 | **Pérdidas** | Mercancía dañada, vencida o robada. Sale del inventario siempre, pero lo que pierdes depende del proveedor: si la repone gratis no pierdes nada, si la repone cobrando pierdes solo eso, y si no la repone pierdes el costo entero. Los casos sin respuesta quedan marcados hasta que el proveedor conteste. |
 | **Contabilidad** | Estado de resultados de verdad: ventas − costo de lo vendido = utilidad bruta; menos la mercancía perdida y los gastos de operar = utilidad neta. Con un veredicto claro de si el negocio gana o pierde, más el valor del inventario y la deuda pendiente. |
@@ -146,6 +147,7 @@ login y `/health`. Documentación interactiva en `/docs`.
 | **expenses** | `GET /expenses` · `POST` · `GET /:id` · `PATCH /:id` · `DELETE /:id` |
 | **expense-categories** | `GET` · `POST` · `PATCH /:id` · `DELETE /:id` |
 | **purchase-orders** | `GET /purchase-orders` · `POST` · `GET /:id` · `GET /:id/pdf` · `PUT /:id` · `DELETE /:id` |
+| **partners** | `GET /partners` · `POST` · `PATCH /:id` · `DELETE /:id` · `GET /profit-distributions?from&to` · `POST /profit-distributions` · `DELETE /profit-distributions/:id` |
 | **customers** | `GET /customers` · `GET /customers/debt` · `GET /:id/account` · `POST` · `PATCH /:id` · `DELETE /:id` · `POST /:id/payments` · `DELETE /:id/payments/:paymentId` |
 | **cash-closings** | `GET` · `GET /preview?date` · `POST` · `GET /:id` · `PATCH /:id` · `DELETE /:id` |
 | **bank-account** | `GET /summary` · `GET /preview?date` · `GET /closings` · `POST /closings` · `GET /closings/:id` · `PATCH /closings/:id` · `DELETE /closings/:id` · `GET /movements` · `POST /movements` · `DELETE /movements/:id` |
@@ -210,6 +212,13 @@ en la caja (efectivo) o en la cuenta (transferencia, tarjeta) en su propia
 fecha. El cuaderno de cada cliente es lo fiado menos lo cobrado, sin atar cada
 cobro a una venta concreta, como en el papel. Lo que deben todos aparece en
 Contabilidad como "Fiados por cobrar", dentro de lo que el negocio tiene.
+
+**Repartir ganancias no es un gasto.** Si las socias se llevan 300.000, el
+negocio ganó lo mismo: no se toca la utilidad neta. Se apunta aparte
+(`ProfitDistribution`, con lo de cada socia y cómo se le pagó) y Contabilidad
+lo muestra debajo de la utilidad como "Repartido a las socias" y "Queda en el
+negocio". El dinero sí sale: en efectivo, de la caja de ese día; por
+transferencia o tarjeta, de la cuenta; como "otro", de ninguna.
 
 **Al proveedor se le puede ir pagando de a poco.** Una compra guarda su total y
 lo abonado; cada abono es una salida de caja de verdad (y se descuenta en el

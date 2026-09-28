@@ -58,7 +58,8 @@ export class CashClosingsService {
   async preview(businessId: string, date: string, openingCash?: number) {
     const day = parseBusinessDate(date);
 
-    const [ventas, cobros, gastos, abonos, reposiciones, cuenta, existente] = await Promise.all([
+    const [ventas, cobros, gastos, abonos, reposiciones, cuenta, repartos, existente] =
+      await Promise.all([
       // Cada linea de venta tiene su forma de pago: se suman las de efectivo.
       this.prisma.saleItem.aggregate({
         where: { paymentMethod: 'CASH', sale: { businessId, date: day } },
@@ -105,6 +106,11 @@ export class CashClosingsService {
         },
         _sum: { amount: true },
       }),
+      // Lo repartido a las socias en efectivo ese dia sale de la caja.
+      this.prisma.profitDistributionItem.aggregate({
+        where: { paymentMethod: 'CASH', distribution: { businessId, date: day } },
+        _sum: { amount: true },
+      }),
       this.prisma.cashClosing.findUnique({
         where: { businessId_date: { businessId, date: day } },
       }),
@@ -120,6 +126,7 @@ export class CashClosingsService {
       cuenta.find((fila) => fila.type === tipo)?._sum.amount ?? new Prisma.Decimal(0);
     const depositedToAccount = deCuenta('CASH_DEPOSIT');
     const withdrawnFromAccount = deCuenta('CASH_WITHDRAWAL');
+    const partnerWithdrawals = repartos._sum.amount ?? new Prisma.Decimal(0);
     const opening = money(
       openingCash ?? (existente ? toDecimal(existente.openingCash) : 0),
     );
@@ -130,7 +137,8 @@ export class CashClosingsService {
         .minus(cashExpenses)
         .minus(cashSupplierPayments)
         .minus(depositedToAccount)
-        .plus(withdrawnFromAccount),
+        .plus(withdrawnFromAccount)
+        .minus(partnerWithdrawals),
     );
 
     return {
@@ -149,6 +157,8 @@ export class CashClosingsService {
       depositedToAccount: depositedToAccount.toFixed(2),
       /** Dinero sacado de la cuenta para la caja ese dia. */
       withdrawnFromAccount: withdrawnFromAccount.toFixed(2),
+      /** Ganancias repartidas a las socias en efectivo ese dia. */
+      partnerWithdrawals: partnerWithdrawals.toFixed(2),
       expectedCash: expected.toFixed(2),
       /** Si ya existe un cierre de ese dia, se devuelve para poder editarlo. */
       existingClosingId: existente?.id ?? null,

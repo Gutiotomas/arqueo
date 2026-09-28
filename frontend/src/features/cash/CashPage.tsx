@@ -1,4 +1,4 @@
-import { Banknote, HandCoins, Landmark, Receipt, Trash2, TrendingUp } from 'lucide-react';
+import { Banknote, HandCoins, Landmark, Receipt, Trash2, TrendingUp, Users } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import {
@@ -79,6 +79,7 @@ export function CashPage() {
   const abonosEfectivo = toNumber(preview.data?.cashSupplierPayments);
   const consignado = toNumber(preview.data?.depositedToAccount);
   const traido = toNumber(preview.data?.withdrawnFromAccount);
+  const repartido = toNumber(preview.data?.partnerWithdrawals);
   // Todo lo que no es la apertura lo calcula el API; aqui solo se suma la
   // apertura que se esta tecleando, para no esperar a la respuesta. Antes la
   // formula estaba repetida aqui y se olvidaba de los abonos a proveedores.
@@ -221,6 +222,15 @@ export function CashPage() {
                       etiqueta="Consignado a la cuenta"
                       detalle="Efectivo que llevaste al banco"
                       valor={`− ${formatMoney(consignado, currency)}`}
+                    />
+                  )}
+                  {repartido > 0 && (
+                    <LineaDesglose
+                      icono={<Users className="h-4 w-4" />}
+                      tono="naranja"
+                      etiqueta="Ganancias repartidas"
+                      detalle="Lo que se llevaron las socias en efectivo"
+                      valor={`− ${formatMoney(repartido, currency)}`}
                     />
                   )}
                   {traido > 0 && (

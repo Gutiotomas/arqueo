@@ -8,6 +8,7 @@ import {
 } from './api';
 import { PageHeader } from '@/app/AppLayout';
 import { useAuth } from '@/features/auth/auth-context';
+import { PartnersCard } from '@/features/partners/PartnersCard';
 import { ApiError } from '@/shared/api/client';
 import { Button } from '@/shared/ui/button';
 import { Card, CardBody, CardHeader } from '@/shared/ui/card';
@@ -81,6 +82,8 @@ export function SettingsPage() {
             />
           )}
         </Card>
+
+        <PartnersCard />
 
         <Card>
           <CardHeader

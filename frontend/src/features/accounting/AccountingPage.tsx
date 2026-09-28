@@ -13,6 +13,7 @@ import { Link } from 'react-router';
 import { useAccounting, useDebt } from './api';
 import { PageHeader } from '@/app/AppLayout';
 import { useAuth } from '@/features/auth/auth-context';
+import { DistributionsCard } from '@/features/partners/DistributionsCard';
 import { cn } from '@/shared/lib/cn';
 import { startOfMonth, today } from '@/shared/lib/dates';
 import { formatMoney, formatPercent, formatQuantity } from '@/shared/lib/money';
@@ -170,6 +171,12 @@ export function AccountingPage() {
                 </Card>
               </div>
             </div>
+
+            <DistributionsCard
+              rango={rango}
+              queda={Number(conta.data.retained)}
+              porSocia={conta.data.distributedByPartner}
+            />
           </>
         ) : null}
       </div>
@@ -313,6 +320,27 @@ function EstadoDeResultados({
           valor={formatMoney(datos.netProfit, currency)}
           tono={Number(datos.netProfit) >= 0 ? 'total' : 'totalNegativo'}
         />
+        {/* Repartir no es gastar: va debajo de la utilidad y no la cambia. */}
+        {Number(datos.distributed) > 0 && (
+          <>
+            <Linea
+              titulo="Repartido a las socias"
+              detalle="No es gasto: sale de lo que el negocio ganó"
+              valor={`− ${formatMoney(datos.distributed, currency)}`}
+              tono="resta"
+            />
+            <Linea
+              titulo="Queda en el negocio"
+              detalle={
+                Number(datos.retained) < 0
+                  ? 'Se repartió más de lo que se ganó en el periodo'
+                  : 'Lo que el periodo dejó para el negocio'
+              }
+              valor={formatMoney(datos.retained, currency)}
+              tono={Number(datos.retained) >= 0 ? 'subtotal' : 'totalNegativo'}
+            />
+          </>
+        )}
 
         <p className="pt-2 text-xs text-slate-500">
           La mercancía que compras no aparece aquí como gasto: mientras esté en

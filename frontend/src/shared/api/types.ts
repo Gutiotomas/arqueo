@@ -196,6 +196,8 @@ export interface CashPreview {
   depositedToAccount: string;
   /** Dinero sacado de la cuenta para la caja ese día. */
   withdrawnFromAccount: string;
+  /** Ganancias repartidas a las socias en efectivo ese día. */
+  partnerWithdrawals: string;
   expectedCash: string;
   existingClosingId: string | null;
 }
@@ -244,6 +246,8 @@ export interface AccountFlows {
   cashWithdrawals: string;
   otherIn: string;
   otherOut: string;
+  /** Ganancias repartidas a las socias por transferencia o tarjeta. */
+  partnerWithdrawals: string;
   net: string;
 }
 
@@ -554,6 +558,11 @@ export interface AccountingOverview {
   supplierDebt: string;
   /** Lo que deben los clientes por ventas fiadas. */
   customerDebt: string;
+  /** Ganancias repartidas a las socias en el periodo. No es gasto. */
+  distributed: string;
+  /** Utilidad neta menos lo repartido: lo que el periodo dejó en el negocio. */
+  retained: string;
+  distributedByPartner: { partnerId: string; name: string; amount: string }[];
   purchases: string;
   supplierPayments: string;
   workingCapital: string;
@@ -645,5 +654,27 @@ export interface LossSummary {
     total: string;
     quantity: string;
     count: number;
+  }[];
+}
+
+/** Una socia del negocio y su parte de las ganancias. */
+export interface Partner {
+  id: string;
+  name: string;
+  sharePercent: string;
+  isActive: boolean;
+}
+
+/** Un reparto de ganancias: no es gasto, pero sale de la caja o de la cuenta. */
+export interface ProfitDistribution {
+  id: string;
+  date: string;
+  total: string;
+  notes: string | null;
+  items: {
+    id: string;
+    amount: string;
+    paymentMethod: PaymentMethod;
+    partner: { id: string; name: string };
   }[];
 }

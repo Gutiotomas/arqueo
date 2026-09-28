@@ -50,6 +50,8 @@ model Business {
   customers         Customer[]
   customerPayments  CustomerPayment[]
   purchaseOrders    PurchaseOrder[]
+  partners          Partner[]
+  distributions     ProfitDistribution[]
 
   @@map("businesses")
 }
@@ -70,7 +72,7 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  business         Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business         Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
   stockMovements   StockMovement[]
   sales            Sale[]
   expenses         Expense[]
@@ -82,6 +84,7 @@ model User {
   accountClosings  AccountClosing[]
   customerPayments CustomerPayment[]
   purchaseOrders   PurchaseOrder[]
+  distributions    ProfitDistribution[]
 
   @@index([businessId])
   @@map("users")
@@ -642,4 +645,66 @@ model AccountClosing {
 
   @@unique([businessId, date])
   @@map("account_closings")
+}
+
+// --------------------------------------------------------------------------
+// Socias y reparto de ganancias
+// --------------------------------------------------------------------------
+
+/// Una socia del negocio y su parte de las ganancias.
+model Partner {
+  id           String   @id @default(uuid()) @db.Uuid
+  businessId   String   @map("business_id") @db.Uuid
+  name         String
+  /// Porcentaje de las ganancias que le toca. Solo sirve para proponer el
+  /// reparto: cada reparto guarda lo que de verdad se llevo cada una.
+  sharePercent Decimal  @map("share_percent") @db.Decimal(5, 2)
+  /// Una socia con repartos no se borra: se desactiva.
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  business Business                 @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  shares   ProfitDistributionItem[]
+
+  @@unique([businessId, name])
+  @@index([businessId])
+  @@map("partners")
+}
+
+/// Un reparto de ganancias: no es un gasto (la utilidad no cambia), es dinero
+/// que sale del negocio para las socias. Sale de la caja o de la cuenta segun
+/// como se le pago a cada una.
+model ProfitDistribution {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @map("business_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  date       DateTime @db.Date
+  total      Decimal  @db.Decimal(14, 2)
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  business Business                 @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items    ProfitDistributionItem[]
+
+  @@index([businessId, date])
+  @@map("profit_distributions")
+}
+
+model ProfitDistributionItem {
+  id             String        @id @default(uuid()) @db.Uuid
+  distributionId String        @map("distribution_id") @db.Uuid
+  partnerId      String        @map("partner_id") @db.Uuid
+  amount         Decimal       @db.Decimal(14, 2)
+  /// Efectivo sale de la caja; transferencia o tarjeta, de la cuenta; "otro",
+  /// de ninguna de las dos.
+  paymentMethod  PaymentMethod @map("payment_method")
+
+  distribution ProfitDistribution @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  partner      Partner            @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+
+  @@index([distributionId])
+  @@index([partnerId])
+  @@map("profit_distribution_items")
 }

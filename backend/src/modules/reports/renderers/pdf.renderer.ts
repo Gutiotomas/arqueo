@@ -139,6 +139,13 @@ export class PdfRenderer {
             ? [['Descuentos de proveedores', `+ ${dinero(data.kpis.supplierDiscounts)}`]]
             : []),
           ['UTILIDAD NETA', dinero(data.kpis.profit)],
+          // Repartir no es gastar: va debajo de la utilidad, no la cambia.
+          ...(Number(data.kpis.distributed) > 0
+            ? [
+                ['Repartido a las socias', `- ${dinero(data.kpis.distributed)}`],
+                ['Queda en el negocio', dinero(data.kpis.retained)],
+              ]
+            : []),
         ],
         '',
       ),
