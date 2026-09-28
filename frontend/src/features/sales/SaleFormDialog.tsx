@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Split, Trash2 } from 'lucide-react';
+import { Split, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useCreateSale, useCustomers, useUpdateSale, type SaleItemPayload, type SalePayload } from './api';
@@ -18,9 +18,14 @@ import { today } from '@/shared/lib/dates';
 import { formatMoney, toNumber } from '@/shared/lib/money';
 import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
 import { useEnfocarNuevo } from '@/shared/lib/use-enfocar-nuevo';
+import { ELEGIR_PRODUCTO, ETIQUETA_PRODUCTO_LIBRE, PRODUCTO_LIBRE } from '@/shared/lib/productos';
+import { AddRowButton } from '@/shared/ui/add-row-button';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
+
+/** Etiqueta pequeña de cada campo de la tarjeta de producto. */
+const ETIQUETA = 'mb-1 block text-xs font-medium text-slate-500';
 
 /** Valor del desplegable de cliente cuando se va a escribir uno nuevo. */
 const CLIENTE_NUEVO = '__nuevo__';
@@ -69,7 +74,7 @@ function agrupar(venta: Sale): Linea[] {
       lineas.get(clave) ??
       {
         key: item.id,
-        productId: item.productId ?? '',
+        productId: item.productId ?? PRODUCTO_LIBRE,
         description: item.description,
         unitPrice: toNumber(item.unitPrice),
         partes: [],
@@ -199,7 +204,13 @@ export function SaleFormDialog({
 
     const items: SaleItemPayload[] = [];
     for (const [indice, linea] of lineas.entries()) {
-      if (!linea.productId && !linea.description.trim()) continue;
+      // Sin elegir nada, la tarjeta vacía no cuenta.
+      if (!linea.productId) continue;
+      const libre = linea.productId === PRODUCTO_LIBRE;
+      if (libre && !linea.description.trim()) {
+        setError(`Escribe qué es el producto ${indice + 1}`);
+        return;
+      }
       if (Number(linea.unitPrice || 0) < 0) {
         setError(`El precio del producto ${indice + 1} no puede ser negativo`);
         return;
@@ -216,8 +227,7 @@ export function SaleFormDialog({
           }
         }
         items.push({
-          ...(linea.productId ? { productId: linea.productId } : {}),
-          ...(linea.description.trim() ? { description: linea.description.trim() } : {}),
+          ...(libre ? { description: linea.description.trim() } : { productId: linea.productId }),
           quantity: Number(parte.quantity),
           unitPrice: Number(linea.unitPrice || 0),
           paymentMethod: parte.paymentMethod,
@@ -284,24 +294,10 @@ export function SaleFormDialog({
         </Field>
 
         <div>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-slate-700">Productos</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const nueva = lineaVacia(formaDePagoInicial);
-                setLineas((previas) => [...previas, nueva]);
-                enfocar(nueva.key);
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              Añadir producto
-            </Button>
-          </div>
+          <span className="mb-2 block text-sm font-medium text-slate-700">Productos</span>
 
           <div className="space-y-3">
-            {lineas.map((linea) => {
+            {lineas.map((linea, indice) => {
               const producto = porId.get(linea.productId);
               // Los granos se venden por kilos, las cervezas de una en una.
               const paso = pasoCantidad(producto?.unit);
@@ -313,76 +309,70 @@ export function SaleFormDialog({
                   data-nuevo={linea.key}
                   className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"
                 >
-                  <div className="grid gap-2 sm:grid-cols-12">
-                    <div className="sm:col-span-7">
-                      <span className="mb-1 block text-xs font-medium text-slate-500 sm:hidden">
-                        Producto
-                      </span>
-                      <Select
-                        value={linea.productId}
-                        onChange={(e) => elegirProducto(linea.key, e.target.value)}
-                        aria-label="Producto"
-                      >
-                        <option value="">Concepto libre (sin inventario)</option>
-                        {(productos.data?.data ?? []).map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} · {cantidadConUnidad(p.stock, p.unit)}
-                          </option>
-                        ))}
-                      </Select>
-                      {!linea.productId && (
-                        <Input
-                          className="mt-2"
-                          placeholder="Descripción (p. ej. recarga de celular)"
-                          aria-label="Descripción"
-                          value={linea.description}
-                          onChange={(e) =>
-                            cambiarLinea(linea.key, { description: e.target.value })
-                          }
-                        />
-                      )}
-                      {producto && Number(producto.stock) <= 0 && (
-                        <p className="mt-1 text-xs text-amber-700">
-                          Sin stock: la venta se registra igual y el inventario
-                          quedará en negativo.
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="sm:col-span-3">
-                      <span className="mb-1 block text-xs font-medium text-slate-500 sm:hidden">
-                        Precio unitario
-                      </span>
-                      <MoneyInput
-                        aria-label="Precio unitario"
-                        value={linea.unitPrice}
-                        onValueChange={(valor) => cambiarLinea(linea.key, { unitPrice: valor })}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 sm:col-span-2">
-                      <span className="text-xs text-slate-500 sm:hidden">Subtotal</span>
-                      <span className="tabular text-sm font-medium text-slate-900">
-                        {formatMoney(subtotalLinea(linea), currency)}
-                      </span>
-                      {lineas.length > 1 && (
-                        <Button
-                          variant="dangerGhost"
-                          size="icon"
-                          aria-label="Quitar producto"
-                          onClick={() =>
-                            setLineas((previas) => previas.filter((otra) => otra.key !== linea.key))
-                          }
+                  <div className="flex items-start gap-2">
+                    <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-12">
+                      <div className="sm:col-span-8">
+                        <span className={ETIQUETA}>Producto {lineas.length > 1 ? indice + 1 : ''}</span>
+                        <Select
+                          value={linea.productId}
+                          onChange={(e) => elegirProducto(linea.key, e.target.value)}
+                          aria-label="Producto"
                         >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
+                          <option value="">{ELEGIR_PRODUCTO}</option>
+                          {(productos.data?.data ?? []).map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} · {cantidadConUnidad(p.stock, p.unit)}
+                            </option>
+                          ))}
+                          <option value={PRODUCTO_LIBRE}>{ETIQUETA_PRODUCTO_LIBRE}</option>
+                        </Select>
+                        {linea.productId === PRODUCTO_LIBRE && (
+                          <Input
+                            className="mt-2"
+                            placeholder="¿Qué es? (p. ej. recarga de celular)"
+                            aria-label="Descripción"
+                            value={linea.description}
+                            onChange={(e) =>
+                              cambiarLinea(linea.key, { description: e.target.value })
+                            }
+                          />
+                        )}
+                        {producto && Number(producto.stock) <= 0 && (
+                          <p className="mt-1 text-xs text-amber-700">
+                            Sin stock: la venta se registra igual y el inventario
+                            quedará en negativo.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="sm:col-span-4">
+                        <span className={ETIQUETA}>Precio por {unidad}</span>
+                        <MoneyInput
+                          aria-label="Precio unitario"
+                          value={linea.unitPrice}
+                          onValueChange={(valor) => cambiarLinea(linea.key, { unitPrice: valor })}
+                        />
+                      </div>
                     </div>
+                    {lineas.length > 1 && (
+                      <Button
+                        variant="dangerGhost"
+                        size="icon"
+                        className="mt-5 shrink-0"
+                        aria-label="Quitar producto"
+                        onClick={() =>
+                          setLineas((previas) => previas.filter((otra) => otra.key !== linea.key))
+                        }
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
 
                   {/* Las partes: cuántas y cómo se pagó cada tanda. Una sola
                       parte es lo normal; "Dividir" añade otra forma de pago. */}
-                  <div className="mt-2 space-y-1.5">
+                  <div className="mt-3 space-y-2">
+                    <span className={ETIQUETA}>Cantidad y cómo se pagó</span>
                     {linea.partes.map((parte) => (
                       <div
                         key={parte.key}
@@ -395,6 +385,7 @@ export function SaleFormDialog({
                           step={paso.step}
                           inputMode={paso.inputMode}
                           aria-label="Cantidad"
+                          placeholder="Cant."
                           className="w-24 text-right tabular"
                           value={parte.quantity}
                           onChange={(e) =>
@@ -483,15 +474,31 @@ export function SaleFormDialog({
                       <Split className="h-3.5 w-3.5" />
                       Dividir: parte en otra forma de pago
                     </button>
-                    {linea.partes.length > 1 && (
-                      <p className="text-xs text-slate-500">
-                        En total {cantidadConUnidad(cantidadLinea(linea), unidad)}.
-                      </p>
-                    )}
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-2 text-sm">
+                    <span className="text-slate-500">
+                      Subtotal
+                      {linea.partes.length > 1 &&
+                        ` · ${cantidadConUnidad(cantidadLinea(linea), unidad)} en total`}
+                    </span>
+                    <span className="tabular font-semibold text-slate-900">
+                      {formatMoney(subtotalLinea(linea), currency)}
+                    </span>
                   </div>
                 </div>
               );
             })}
+
+            <AddRowButton
+              onClick={() => {
+                const nueva = lineaVacia(formaDePagoInicial);
+                setLineas((previas) => [...previas, nueva]);
+                enfocar(nueva.key);
+              }}
+            >
+              Añadir producto
+            </AddRowButton>
           </div>
         </div>
 

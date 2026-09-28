@@ -9,7 +9,7 @@ import { useId } from 'react';
 import { cn } from '@/shared/lib/cn';
 
 const controlBase =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-xs transition-colors placeholder:text-slate-400 focus:border-marca-500 focus:outline-2 focus:outline-offset-0 focus:outline-marca-500/30 disabled:bg-slate-50 disabled:text-slate-500 aria-[invalid=true]:border-red-400';
+  'w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 sm:text-sm shadow-xs transition-colors placeholder:text-slate-400 focus:border-marca-500 focus:outline-2 focus:outline-offset-0 focus:outline-marca-500/30 disabled:bg-slate-50 disabled:text-slate-500 aria-[invalid=true]:border-red-400';
 
 export function Label({
   children,

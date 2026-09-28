@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useSuppliers } from './api';
@@ -11,9 +11,14 @@ import { today } from '@/shared/lib/dates';
 import { formatMoney, toNumber } from '@/shared/lib/money';
 import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
 import { useEnfocarNuevo } from '@/shared/lib/use-enfocar-nuevo';
+import { ELEGIR_PRODUCTO, ETIQUETA_PRODUCTO_LIBRE, PRODUCTO_LIBRE } from '@/shared/lib/productos';
+import { AddRowButton } from '@/shared/ui/add-row-button';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
+
+/** Etiqueta pequeña de cada campo de la tarjeta de producto. */
+const ETIQUETA = 'mb-1 block text-xs font-medium text-slate-500';
 
 /** Valor del desplegable de proveedor cuando se va a escribir uno nuevo. */
 const PROVEEDOR_NUEVO = '__nuevo__';
@@ -78,7 +83,7 @@ export function OrderFormDialog({
       setLineas(
         pedido.items.map((item) => ({
           key: item.id,
-          productId: item.productId ?? '',
+          productId: item.productId ?? PRODUCTO_LIBRE,
           description: item.productId ? '' : item.description,
           quantity: toNumber(item.quantity),
           unitPrice: toNumber(item.unitPrice),
@@ -115,14 +120,22 @@ export function OrderFormDialog({
   async function guardar() {
     setError(null);
 
-    const items = lineas
-      .filter((linea) => linea.productId || linea.description.trim())
-      .map((linea) => ({
-        ...(linea.productId ? { productId: linea.productId } : {}),
-        ...(linea.description.trim() ? { description: linea.description.trim() } : {}),
-        quantity: Number(linea.quantity || 0),
-        unitPrice: Number(linea.unitPrice || 0),
-      }));
+    // Sin elegir nada, la tarjeta vacía no cuenta.
+    const elegidas = lineas.filter((linea) => linea.productId);
+    const sinNombre = elegidas.findIndex(
+      (linea) => linea.productId === PRODUCTO_LIBRE && !linea.description.trim(),
+    );
+    if (sinNombre >= 0) {
+      setError(`Escribe qué es el producto ${lineas.indexOf(elegidas[sinNombre]!) + 1}`);
+      return;
+    }
+    const items = elegidas.map((linea) => ({
+      ...(linea.productId === PRODUCTO_LIBRE
+        ? { description: linea.description.trim() }
+        : { productId: linea.productId }),
+      quantity: Number(linea.quantity || 0),
+      unitPrice: Number(linea.unitPrice || 0),
+    }));
 
     if (!items.length) {
       setError('Añade al menos un producto');
@@ -214,71 +227,55 @@ export function OrderFormDialog({
         </div>
 
         <div>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-slate-700">Lo que pides</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const nueva = lineaVacia();
-                setLineas((previas) => [...previas, nueva]);
-                enfocar(nueva.key);
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              Añadir producto
-            </Button>
-          </div>
+          <span className="mb-2 block text-sm font-medium text-slate-700">Lo que pides</span>
 
           <div className="space-y-3">
-            {lineas.map((linea) => {
+            {lineas.map((linea, indice) => {
               const producto = porId.get(linea.productId);
               const paso = pasoCantidad(producto?.unit);
+              const unidad = producto?.unit ?? 'ud';
               return (
                 <div
                   key={linea.key}
                   data-nuevo={linea.key}
                   className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"
                 >
-                  <div className="grid gap-2 sm:grid-cols-12">
-                    <div className="sm:col-span-5">
-                      <span className="mb-1 block text-xs font-medium text-slate-500 sm:hidden">
-                        Producto
-                      </span>
-                      <Select
-                        value={linea.productId}
-                        onChange={(e) => elegirProducto(linea.key, e.target.value)}
-                        aria-label="Producto"
-                      >
-                        <option value="">Algo que no está en el inventario</option>
-                        {(productos.data?.data ?? []).map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} · quedan {cantidadConUnidad(p.stock, p.unit)}
-                          </option>
-                        ))}
-                      </Select>
-                      {!linea.productId && (
-                        <Input
-                          className="mt-2"
-                          placeholder="Descripción (p. ej. Quesito hoja)"
-                          aria-label="Descripción"
-                          value={linea.description}
-                          onChange={(e) => cambiarLinea(linea.key, { description: e.target.value })}
-                        />
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 sm:contents">
+                  <div className="flex items-start gap-2">
+                    <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-12">
+                      <div className="col-span-2 sm:col-span-6">
+                        <span className={ETIQUETA}>Producto {lineas.length > 1 ? indice + 1 : ''}</span>
+                        <Select
+                          value={linea.productId}
+                          onChange={(e) => elegirProducto(linea.key, e.target.value)}
+                          aria-label="Producto"
+                        >
+                          <option value="">{ELEGIR_PRODUCTO}</option>
+                          {(productos.data?.data ?? []).map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} · quedan {cantidadConUnidad(p.stock, p.unit)}
+                            </option>
+                          ))}
+                          <option value={PRODUCTO_LIBRE}>{ETIQUETA_PRODUCTO_LIBRE}</option>
+                        </Select>
+                        {linea.productId === PRODUCTO_LIBRE && (
+                          <Input
+                            className="mt-2"
+                            placeholder="¿Qué es? (p. ej. Quesito hoja)"
+                            aria-label="Descripción"
+                            value={linea.description}
+                            onChange={(e) => cambiarLinea(linea.key, { description: e.target.value })}
+                          />
+                        )}
+                      </div>
                       <div className="sm:col-span-2">
-                        <span className="mb-1 block text-xs font-medium text-slate-500 sm:hidden">
-                          Cantidad
-                        </span>
+                        <span className={ETIQUETA}>Cantidad</span>
                         <Input
                           type="number"
                           min={paso.min}
                           step={paso.step}
                           inputMode={paso.inputMode}
                           aria-label="Cantidad"
+                          placeholder={unidad}
                           className="text-right tabular"
                           value={linea.quantity}
                           onChange={(e) =>
@@ -288,10 +285,8 @@ export function OrderFormDialog({
                           }
                         />
                       </div>
-                      <div className="sm:col-span-3">
-                        <span className="mb-1 block text-xs font-medium text-slate-500 sm:hidden">
-                          Vr. unidad
-                        </span>
+                      <div className="sm:col-span-4">
+                        <span className={ETIQUETA}>Vr. unidad</span>
                         <MoneyInput
                           aria-label="Valor unitario"
                           value={linea.unitPrice}
@@ -299,29 +294,40 @@ export function OrderFormDialog({
                         />
                       </div>
                     </div>
+                    {lineas.length > 1 && (
+                      <Button
+                        variant="dangerGhost"
+                        size="icon"
+                        className="mt-5 shrink-0"
+                        aria-label="Quitar producto"
+                        onClick={() =>
+                          setLineas((previas) => previas.filter((otra) => otra.key !== linea.key))
+                        }
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
 
-                    <div className="flex items-center justify-between gap-2 sm:col-span-2">
-                      <span className="text-xs text-slate-500 sm:hidden">Vr. total</span>
-                      <span className="tabular text-sm font-medium text-slate-900">
-                        {formatMoney(subtotal(linea), currency)}
-                      </span>
-                      {lineas.length > 1 && (
-                        <Button
-                          variant="dangerGhost"
-                          size="icon"
-                          aria-label="Quitar producto"
-                          onClick={() =>
-                            setLineas((previas) => previas.filter((otra) => otra.key !== linea.key))
-                          }
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
+                  <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-2 text-sm">
+                    <span className="text-slate-500">Vr. total</span>
+                    <span className="tabular font-semibold text-slate-900">
+                      {formatMoney(subtotal(linea), currency)}
+                    </span>
                   </div>
                 </div>
               );
             })}
+
+            <AddRowButton
+              onClick={() => {
+                const nueva = lineaVacia();
+                setLineas((previas) => [...previas, nueva]);
+                enfocar(nueva.key);
+              }}
+            >
+              Añadir producto
+            </AddRowButton>
           </div>
         </div>
 

@@ -8,6 +8,7 @@ import { ApiError, api } from '@/shared/api/client';
 import type { Paginated, Product } from '@/shared/api/types';
 import { formatMoney, toNumber } from '@/shared/lib/money';
 import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
+import { ELEGIR_PRODUCTO } from '@/shared/lib/productos';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/shared/ui/field';
@@ -132,7 +133,7 @@ export function ConvertDialog({
             onChange={(e) => setDestinoId(e.target.value)}
             aria-label="Producto de destino"
           >
-            <option value="">Elige el producto</option>
+            <option value="">{ELEGIR_PRODUCTO}</option>
             {candidatos.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} · {cantidadConUnidad(p.stock, p.unit)}
@@ -142,7 +143,7 @@ export function ConvertDialog({
         </Field>
 
         <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
-          <Field label={`Sale (${producto?.unit ?? ''})`}>
+          <Field label={`Cantidad que sale (${producto?.unit ?? ''})`}>
             <Input
               type="number"
               min={pasoSale.min}
@@ -155,7 +156,7 @@ export function ConvertDialog({
             />
           </Field>
           <ArrowRight className="mb-3 h-5 w-5 text-slate-400" aria-hidden="true" />
-          <Field label={`Entra (${destino?.unit ?? '…'})`}>
+          <Field label={`Cantidad que entra (${destino?.unit ?? '…'})`}>
             <Input
               type="number"
               min={pasoEntra.min}

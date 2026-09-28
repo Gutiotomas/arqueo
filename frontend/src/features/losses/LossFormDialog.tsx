@@ -21,6 +21,7 @@ import { cn } from '@/shared/lib/cn';
 import { today } from '@/shared/lib/dates';
 import { formatMoney, toNumber } from '@/shared/lib/money';
 import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
+import { ELEGIR_PRODUCTO } from '@/shared/lib/productos';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
@@ -218,7 +219,7 @@ export function LossFormDialog({
             onChange={(e) => setProductId(e.target.value)}
             aria-label="Producto"
           >
-            <option value="">Elige un producto</option>
+            <option value="">{ELEGIR_PRODUCTO}</option>
             {(productos.data?.data ?? []).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} · {cantidadConUnidad(p.stock, p.unit)}

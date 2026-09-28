@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useCreatePurchase, useSuppliers, type PurchasePayload } from './api';
@@ -16,9 +16,14 @@ import { today } from '@/shared/lib/dates';
 import { formatMoney, roundMoney, toNumber } from '@/shared/lib/money';
 import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
 import { useEnfocarNuevo } from '@/shared/lib/use-enfocar-nuevo';
+import { ELEGIR_PRODUCTO } from '@/shared/lib/productos';
+import { AddRowButton } from '@/shared/ui/add-row-button';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
+
+/** Etiqueta pequeña de cada campo de la tarjeta de producto. */
+const ETIQUETA = 'mb-1 block text-xs font-medium text-slate-500';
 
 /** Valor del desplegable de proveedor cuando se va a escribir uno nuevo. */
 const PROVEEDOR_NUEVO = '__nuevo__';
@@ -301,31 +306,18 @@ export function PurchaseFormDialog({
         </div>
 
         <div>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-slate-700">
-              Mercancía comprada
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const nueva = lineaVacia();
-                setLineas((previas) => [...previas, nueva]);
-                enfocar(nueva.key);
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              Añadir producto
-            </Button>
-          </div>
+          <span className="mb-2 block text-sm font-medium text-slate-700">
+            Mercancía comprada
+          </span>
 
           <div className="space-y-3">
-            {lineas.map((linea) => {
+            {lineas.map((linea, indice) => {
               const producto = porId.get(linea.productId);
               const subtotal =
                 Number(linea.quantity || 0) * Number(linea.unitCost || 0);
               // Los granos se compran por kilos, las gaseosas de una en una.
               const paso = pasoCantidad(producto?.unit);
+              const unidad = producto?.unit ?? 'ud';
 
               return (
                 <div
@@ -333,38 +325,32 @@ export function PurchaseFormDialog({
                   data-nuevo={linea.key}
                   className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"
                 >
-                  <div className="grid gap-2 sm:grid-cols-12">
-                    <div className="sm:col-span-5">
-                      <span className="mb-1 block text-xs font-medium text-slate-500 sm:hidden">
-                        Producto
-                      </span>
-                      <Select
-                        value={linea.productId}
-                        onChange={(e) => elegirProducto(linea.key, e.target.value)}
-                        aria-label="Producto"
-                      >
-                        <option value="">Elige un producto</option>
-                        {(productos.data?.data ?? []).map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} · {cantidadConUnidad(p.stock, p.unit)}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-
-                    {/* En el celular cantidad y costo comparten línea; en
-                        escritorio vuelven a ser columnas de la rejilla. */}
-                    <div className="grid grid-cols-2 gap-2 sm:contents">
+                  <div className="flex items-start gap-2">
+                    <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-12">
+                      <div className="col-span-2 sm:col-span-6">
+                        <span className={ETIQUETA}>Producto {lineas.length > 1 ? indice + 1 : ''}</span>
+                        <Select
+                          value={linea.productId}
+                          onChange={(e) => elegirProducto(linea.key, e.target.value)}
+                          aria-label="Producto"
+                        >
+                          <option value="">{ELEGIR_PRODUCTO}</option>
+                          {(productos.data?.data ?? []).map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} · {cantidadConUnidad(p.stock, p.unit)}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
                       <div className="sm:col-span-2">
-                        <span className="mb-1 block text-xs font-medium text-slate-500 sm:hidden">
-                          Cantidad
-                        </span>
+                        <span className={ETIQUETA}>Cantidad</span>
                         <Input
                           type="number"
                           min={paso.min}
                           step={paso.step}
                           inputMode={paso.inputMode}
                           aria-label="Cantidad"
+                          placeholder={unidad}
                           className="text-right tabular"
                           value={linea.quantity}
                           onChange={(e) =>
@@ -375,11 +361,8 @@ export function PurchaseFormDialog({
                           }
                         />
                       </div>
-
-                      <div className="sm:col-span-3">
-                        <span className="mb-1 block text-xs font-medium text-slate-500 sm:hidden">
-                          Costo
-                        </span>
+                      <div className="sm:col-span-4">
+                        <span className={ETIQUETA}>Costo por {unidad}</span>
                         <MoneyInput
                           aria-label="Costo unitario"
                           value={linea.unitCost}
@@ -389,31 +372,42 @@ export function PurchaseFormDialog({
                         />
                       </div>
                     </div>
+                    {lineas.length > 1 && (
+                      <Button
+                        variant="dangerGhost"
+                        size="icon"
+                        className="mt-5 shrink-0"
+                        aria-label="Quitar producto"
+                        onClick={() =>
+                          setLineas((previas) =>
+                            previas.filter((otra) => otra.key !== linea.key),
+                          )
+                        }
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
 
-                    <div className="flex items-center justify-between gap-2 sm:col-span-2">
-                      <span className="text-xs text-slate-500 sm:hidden">Subtotal</span>
-                      <span className="tabular text-sm font-medium text-slate-900">
-                        {formatMoney(subtotal, currency)}
-                      </span>
-                      {lineas.length > 1 && (
-                        <Button
-                          variant="dangerGhost"
-                          size="icon"
-                          aria-label="Quitar producto"
-                          onClick={() =>
-                            setLineas((previas) =>
-                              previas.filter((otra) => otra.key !== linea.key),
-                            )
-                          }
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
+                  <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-2 text-sm">
+                    <span className="text-slate-500">Subtotal</span>
+                    <span className="tabular font-semibold text-slate-900">
+                      {formatMoney(subtotal, currency)}
+                    </span>
                   </div>
                 </div>
               );
             })}
+
+            <AddRowButton
+              onClick={() => {
+                const nueva = lineaVacia();
+                setLineas((previas) => [...previas, nueva]);
+                enfocar(nueva.key);
+              }}
+            >
+              Añadir producto
+            </AddRowButton>
           </div>
         </div>
 
