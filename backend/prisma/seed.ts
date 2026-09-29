@@ -14,10 +14,15 @@ import { PrismaClient, Prisma } from '../src/generated/prisma/client';
 import type { PaymentMethod } from '../src/generated/prisma/enums';
 
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL, max: 3 }),
+  // Dos conexiones: en produccion la base gratuita admite cinco y el API ya
+  // usa tres.
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL, max: 2 }),
 });
 
 const DIAS_DE_HISTORIA = 60;
+
+/** El unico negocio que este script crea y borra. */
+const NEGOCIO_DEMO = 'Tienda La Esquina';
 
 const CATEGORIAS_PRODUCTO = ['Bebidas', 'Snacks', 'Aseo', 'Papelería'];
 
@@ -105,15 +110,27 @@ async function main(): Promise<void> {
   const email = process.env.SEED_EMAIL ?? 'demo@arqueo.app';
   const password = process.env.SEED_PASSWORD ?? 'demo1234';
 
-  const existente = await prisma.user.findUnique({ where: { email } });
+  // Solo se toca el negocio de demostracion. Los demas negocios de la base
+  // (los de verdad) ni se leen: cada tabla va filtrada por su negocio.
+  const existente = await prisma.user.findUnique({
+    where: { email },
+    include: { business: { select: { name: true } } },
+  });
   if (existente) {
+    if (existente.business.name !== NEGOCIO_DEMO) {
+      throw new Error(
+        `${email} pertenece a "${existente.business.name}", que no es el negocio de demostración. No se borra nada.`,
+      );
+    }
     console.log(`Ya existe el usuario ${email}: borrando su negocio para volver a sembrarlo...`);
+    // Los repartos van primero: protegen a las socias de borrarse con historial.
+    await prisma.profitDistribution.deleteMany({ where: { businessId: existente.businessId } });
     await prisma.business.delete({ where: { id: existente.businessId } });
   }
 
   const business = await prisma.business.create({
     data: {
-      name: 'Tienda La Esquina',
+      name: NEGOCIO_DEMO,
       currency: 'COP',
       timezone: 'America/Bogota',
       users: {
@@ -655,6 +672,151 @@ async function main(): Promise<void> {
     totalCierres++;
   }
 
+  // --- Fiados: clientes que se llevan algo y pagan despues -----------------
+  let totalFiados = 0;
+  const clientes = [];
+  for (const name of ['Doña Marta', 'Don Julio', 'Carolina (vecina)']) {
+    clientes.push(await prisma.customer.create({ data: { businessId, name } }));
+  }
+  for (const [indice, diasAtras] of [12, 9, 6, 4, 2].entries()) {
+    const disponibles = productos.filter((p) => (stockActual.get(p.id) ?? 0) >= 3);
+    if (disponibles.length < 2) break;
+    const [contado, fiado] = [disponibles[indice % disponibles.length]!, disponibles[(indice + 1) % disponibles.length]!];
+    const cliente = clientes[indice % clientes.length]!;
+    const lineas = [
+      { producto: contado, cantidad: 2, paymentMethod: 'CASH' as PaymentMethod, customerId: null },
+      { producto: fiado, cantidad: 1, paymentMethod: 'CREDIT' as PaymentMethod, customerId: cliente.id },
+    ];
+    const venta = await prisma.sale.create({
+      data: {
+        businessId,
+        userId,
+        date: fecha(diasAtras),
+        total: lineas.reduce(
+          (suma, l) => suma.plus(new Prisma.Decimal(l.producto.salePrice).times(l.cantidad)),
+          new Prisma.Decimal(0),
+        ),
+        items: {
+          createMany: {
+            data: lineas.map((l, position) => ({
+              position,
+              productId: l.producto.id,
+              description: l.producto.name,
+              quantity: new Prisma.Decimal(l.cantidad),
+              unitPrice: new Prisma.Decimal(l.producto.salePrice),
+              unitCost: new Prisma.Decimal(costoActual.get(l.producto.id) ?? 0),
+              subtotal: new Prisma.Decimal(l.producto.salePrice).times(l.cantidad),
+              paymentMethod: l.paymentMethod,
+              customerId: l.customerId,
+            })),
+          },
+        },
+      },
+      include: { items: true },
+    });
+    for (const item of venta.items) {
+      const actualizado = await prisma.product.update({
+        where: { id: item.productId! },
+        data: { stock: { decrement: item.quantity } },
+      });
+      stockActual.set(item.productId!, Number(actualizado.stock));
+      await prisma.stockMovement.create({
+        data: {
+          businessId,
+          productId: item.productId!,
+          userId,
+          saleItemId: item.id,
+          type: 'OUT',
+          delta: item.quantity.negated(),
+          stockAfter: actualizado.stock,
+          reason: 'Venta',
+        },
+      });
+    }
+    totalFiados++;
+  }
+  // Doña Marta ya abono algo, por transferencia para no mover las cajas cerradas.
+  const loDeMarta = await prisma.saleItem.aggregate({
+    where: { customerId: clientes[0]!.id, paymentMethod: 'CREDIT' },
+    _sum: { subtotal: true },
+  });
+  if (loDeMarta._sum.subtotal?.greaterThan(0)) {
+    await prisma.customerPayment.create({
+      data: {
+        businessId,
+        customerId: clientes[0]!.id,
+        userId,
+        date: fecha(1),
+        amount: loDeMarta._sum.subtotal.dividedBy(2).toDecimalPlaces(0),
+        paymentMethod: 'TRANSFER',
+        notes: 'Abono por Nequi',
+      },
+    });
+  }
+
+  // --- Socias y un reparto de ganancias ------------------------------------
+  const socias = [];
+  for (const name of ['Sandra', 'Bibiana']) {
+    socias.push(await prisma.partner.create({ data: { businessId, name, sharePercent: 50 } }));
+  }
+  await prisma.profitDistribution.create({
+    data: {
+      businessId,
+      userId,
+      date: fecha(15),
+      total: 300000,
+      notes: 'Ganancias de la primera quincena',
+      items: {
+        createMany: {
+          data: socias.map((socia) => ({
+            partnerId: socia.id,
+            amount: 150000,
+            paymentMethod: 'TRANSFER' as PaymentMethod,
+          })),
+        },
+      },
+    },
+  });
+
+  // --- Un pedido al proveedor, listo para mandar en PDF ---------------------
+  const paraPedir = productos.slice(0, 4);
+  const lineasPedido = paraPedir.map((producto, position) => {
+    const costo = new Prisma.Decimal(costoActual.get(producto.id) ?? producto.costPrice);
+    return {
+      position,
+      productId: producto.id,
+      description: producto.name,
+      quantity: new Prisma.Decimal(12),
+      unitPrice: costo,
+      subtotal: costo.times(12),
+    };
+  });
+  await prisma.purchaseOrder.create({
+    data: {
+      businessId,
+      userId,
+      supplierId: proveedores[0]!.id,
+      number: 1,
+      date: fecha(0),
+      total: lineasPedido.reduce((suma, l) => suma.plus(l.subtotal), new Prisma.Decimal(0)),
+      notes: 'Para el lunes',
+      items: { createMany: { data: lineasPedido } },
+    },
+  });
+
+  // --- La cuenta del banco: punto de partida hace un mes -------------------
+  await prisma.accountClosing.create({
+    data: {
+      businessId,
+      userId,
+      date: fecha(30),
+      closingBalance: 1500000,
+      expectedBalance: 1500000,
+      difference: 0,
+      notes: 'Saldo con el que se empezó a llevar la cuenta',
+    },
+  });
+
   console.log('Datos de demostración creados:');
   console.log(`  Negocio:  ${business.name} (${business.currency})`);
   console.log(`  Usuario:  ${email} / ${password}`);
@@ -665,6 +827,9 @@ async function main(): Promise<void> {
   console.log(`  Gastos:    ${totalGastos}`);
   console.log(`  Pérdidas:  ${totalPerdidas} casos de mercancía dañada`);
   console.log(`  Cierres:   ${totalCierres}`);
+  console.log(`  Fiados:    ${totalFiados} ventas con parte fiada, ${clientes.length} clientes`);
+  console.log(`  Socias:    ${socias.length}, con un reparto de ganancias`);
+  console.log('  Pedidos:   1 · Cuenta: punto de partida hace 30 días');
 }
 
 main()

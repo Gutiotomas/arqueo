@@ -67,6 +67,9 @@ export class ApiError extends Error {
   }
 }
 
+/** Rutas donde un 401 significa que la contraseña no es la correcta. */
+const INTENTOS_DE_CLAVE = ['/auth/login', '/auth/password'];
+
 type Params = Record<string, string | number | boolean | undefined | null>;
 
 function construirUrl(path: string, params?: Params): string {
@@ -99,11 +102,15 @@ async function request<T>(
     ...(options.body ? { body: JSON.stringify(options.body) } : {}),
   });
 
-  if (respuesta.status === 401) {
+  // Un 401 al entrar o al cambiar la clave es "contraseña incorrecta", no una
+  // sesión caducada: sigue abajo y enseña el mensaje del servidor.
+  const esIntento = INTENTOS_DE_CLAVE.some((ruta) => path.startsWith(ruta));
+
+  if (respuesta.status === 401 && !esIntento) {
     // El token caduco o no vale: fuera y a la pantalla de entrada, dejando
     // dicho por que, para que el login lo explique en vez de aparecer sin mas.
     setToken(null);
-    marcarSesionCaducada();
+    if (token) marcarSesionCaducada();
     if (!location.pathname.startsWith('/login')) {
       location.href = '/login';
     }

@@ -352,6 +352,30 @@ declarado.
 
 ---
 
+## Demo pública
+
+Para enseñar la app sin tocar los negocios de verdad hay una cuenta de
+demostración: "Tienda La Esquina", con dos meses de ventas, compras a crédito,
+fiados, socias, un pedido y cierres de caja.
+
+```bash
+cd backend
+# En local usa la base del .env. Contra producción, pasa la URI por delante:
+DATABASE_URL="<URI de la base>" SEED_DEMO=true npm run seed
+```
+
+- **Solo toca el negocio de demostración.** Cada tabla va filtrada por negocio;
+  los demás no se leen ni se escriben. Si `SEED_EMAIL` apunta a un correo que
+  pertenece a otro negocio, el script se niega y no borra nada.
+- **Se puede repetir.** Volver a ejecutarlo borra la demo y la crea de nuevo:
+  sirve para reiniciarla cuando los visitantes la hayan desordenado.
+- **La cuenta demo no puede cambiar su contraseña**, para que el siguiente
+  visitante pueda entrar.
+- En el frontend, `VITE_DEMO_EMAIL` y `VITE_DEMO_PASSWORD` (en Vercel) hacen
+  aparecer el botón "Ver la demo sin registrarme" en el login.
+- Las migraciones tienen que estar aplicadas antes (el despliegue en Render
+  las aplica), porque el seed usa el esquema del código actual.
+
 ## Pruebas
 
 ```bash

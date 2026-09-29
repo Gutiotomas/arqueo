@@ -7,6 +7,19 @@ import { Button } from '@/shared/ui/button';
 import { Despertando, useEsperaLarga } from '@/shared/ui/despertando';
 import { Field, Input } from '@/shared/ui/field';
 
+/**
+ * Cuenta de demostración, si el despliegue la tiene (VITE_DEMO_EMAIL y
+ * VITE_DEMO_PASSWORD). No es un secreto: es una cuenta pública con datos de
+ * ejemplo, y por eso puede ir en el código del navegador.
+ */
+const DEMO =
+  import.meta.env.VITE_DEMO_EMAIL && import.meta.env.VITE_DEMO_PASSWORD
+    ? {
+        email: String(import.meta.env.VITE_DEMO_EMAIL),
+        password: String(import.meta.env.VITE_DEMO_PASSWORD),
+      }
+    : null;
+
 export function LoginPage() {
   const { user, login } = useAuth();
   const [email, setEmail] = useState('');
@@ -19,12 +32,11 @@ export function LoginPage() {
 
   if (user) return <Navigate to="/" replace />;
 
-  async function enviar(evento: FormEvent) {
-    evento.preventDefault();
+  async function entrar(correo: string, clave: string) {
     setError(null);
     setEnviando(true);
     try {
-      await login(email, password);
+      await login(correo, clave);
     } catch (fallo) {
       setError(
         fallo instanceof ApiError ? fallo.detalle : 'No se pudo iniciar sesión',
@@ -32,6 +44,11 @@ export function LoginPage() {
     } finally {
       setEnviando(false);
     }
+  }
+
+  function enviar(evento: FormEvent) {
+    evento.preventDefault();
+    void entrar(email, password);
   }
 
   return (
@@ -77,6 +94,20 @@ export function LoginPage() {
         <Button type="submit" size="lg" className="w-full" disabled={enviando}>
           {enviando ? 'Entrando...' : 'Entrar'}
         </Button>
+
+        {/* Para quien solo quiere ver cómo es: entra a un negocio de ejemplo. */}
+        {DEMO && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            className="w-full"
+            disabled={enviando}
+            onClick={() => entrar(DEMO.email, DEMO.password)}
+          >
+            Ver la demo sin registrarme
+          </Button>
+        )}
 
         {espera !== null && <Despertando segundos={espera} />}
 

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -106,6 +107,14 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
+    }
+
+    // La cuenta de demostracion es publica: si alguien le cambia la clave,
+    // el siguiente visitante ya no puede entrar.
+    if (user.email === (process.env.SEED_EMAIL ?? 'demo@arqueo.app')) {
+      throw new ForbiddenException(
+        'La cuenta de demostración no permite cambiar la contraseña',
+      );
     }
 
     const ok = await bcrypt.compare(dto.currentPassword, user.passwordHash);
