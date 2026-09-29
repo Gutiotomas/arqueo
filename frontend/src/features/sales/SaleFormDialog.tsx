@@ -127,6 +127,18 @@ export function SaleFormDialog({
     [productos.data],
   );
 
+  // Productos de venta que ya no están activos en el inventario (se
+  // archivaron después). Siguen en el desplegable para que al editar no se
+  // pierda qué producto era.
+  const archivados = useMemo(() => {
+    if (!productos.data) return [];
+    const vistos = new Map<string, { id: string; name: string; unit: string }>();
+    for (const item of venta?.items ?? []) {
+      if (item.product && !porId.has(item.product.id)) vistos.set(item.product.id, item.product);
+    }
+    return [...vistos.values()];
+  }, [venta, productos.data, porId]);
+
   // Al abrir: o los datos de la venta que se edita, o un formulario limpio.
   useEffect(() => {
     if (!open) return;
@@ -299,9 +311,11 @@ export function SaleFormDialog({
           <div className="space-y-3">
             {lineas.map((linea, indice) => {
               const producto = porId.get(linea.productId);
+              const archivado = archivados.find((a) => a.id === linea.productId);
+              const paso = pasoCantidad(producto?.unit ?? archivado?.unit);
               // Los granos se venden por kilos, las cervezas de una en una.
-              const paso = pasoCantidad(producto?.unit);
-              const unidad = producto?.unit ?? 'ud';
+              
+              const unidad = producto?.unit ?? archivado?.unit ?? 'ud';
 
               return (
                 <div
@@ -322,6 +336,11 @@ export function SaleFormDialog({
                           {(productos.data?.data ?? []).map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.name} · {cantidadConUnidad(p.stock, p.unit)}
+                            </option>
+                          ))}
+                          {archivados.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} (archivado)
                             </option>
                           ))}
                           <option value={PRODUCTO_LIBRE}>{ETIQUETA_PRODUCTO_LIBRE}</option>
