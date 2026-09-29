@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from 'react';
 
+import { useQueryClient } from '@tanstack/react-query';
+
 import { api, getToken, setToken } from '@/shared/api/client';
 import type { Session, User } from '@/shared/api/types';
 
@@ -33,6 +35,21 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [cargando, setCargando] = useState(true);
+  const consultas = useQueryClient();
+
+  /**
+   * Al cambiar de sesión se tira todo lo consultado. Si no, quien entra
+   * después en el mismo navegador ve, hasta que se refresca, los datos del
+   * negocio anterior.
+   */
+  const abrirSesion = useCallback(
+    (sesion: Session | null) => {
+      consultas.clear();
+      setToken(sesion?.accessToken ?? null);
+      setUser(sesion?.user ?? null);
+    },
+    [consultas],
+  );
 
   // Al arrancar, si hay token guardado se comprueba contra el API.
   useEffect(() => {
@@ -48,22 +65,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setCargando(false));
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const sesion = await api.post<Session>('/auth/login', { email, password });
-    setToken(sesion.accessToken);
-    setUser(sesion.user);
-  }, []);
+  const login = useCallback(
+    async (email: string, password: string) => {
+      abrirSesion(await api.post<Session>('/auth/login', { email, password }));
+    },
+    [abrirSesion],
+  );
 
-  const register = useCallback(async (datos: RegisterPayload) => {
-    const sesion = await api.post<Session>('/auth/register', datos);
-    setToken(sesion.accessToken);
-    setUser(sesion.user);
-  }, []);
+  const register = useCallback(
+    async (datos: RegisterPayload) => {
+      abrirSesion(await api.post<Session>('/auth/register', datos));
+    },
+    [abrirSesion],
+  );
 
-  const logout = useCallback(() => {
-    setToken(null);
-    setUser(null);
-  }, []);
+  const logout = useCallback(() => abrirSesion(null), [abrirSesion]);
 
   const refrescarUsuario = useCallback(async () => {
     setUser(await api.get<User>('/auth/me'));
