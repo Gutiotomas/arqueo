@@ -1,9 +1,16 @@
-import { ChevronDown, ChevronUp, FileDown, PackageCheck, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileDown, PackageCheck, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { Fragment, useState } from 'react';
 
 import { useSuppliers } from './api';
 import { OrderFormDialog } from './OrderFormDialog';
-import { downloadOrderPdf, useDeleteOrder, useOrders, type OrderFilters } from './orders-api';
+import {
+  downloadOrderPdf,
+  useDeleteOrder,
+  useOrders,
+  useReceiveOrder,
+  useReopenOrder,
+  type OrderFilters,
+} from './orders-api';
 import { PESTANAS_COMPRAS } from './pestanas';
 import { PurchaseFormDialog, type CompraInicial } from './PurchaseFormDialog';
 import { PageHeader } from '@/app/AppLayout';
@@ -16,7 +23,7 @@ import { cantidadConUnidad } from '@/shared/lib/unidades';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { ConfirmDialog } from '@/shared/ui/dialog';
-import { EmptyState, ErrorMessage, Loading, Pagination } from '@/shared/ui/feedback';
+import { Badge, EmptyState, ErrorMessage, Loading, Pagination } from '@/shared/ui/feedback';
 import { Select } from '@/shared/ui/field';
 import { MobileCard, MobileList, TableWrapper } from '@/shared/ui/mobile-list';
 import { PageTabs } from '@/shared/ui/page-tabs';
@@ -66,6 +73,7 @@ export function OrdersPage() {
     from: startOfMonth(),
     to: today(),
     supplierId: '',
+    status: '',
     page: 1,
     limit: 20,
   });
@@ -82,6 +90,8 @@ export function OrdersPage() {
   const pedidos = useOrders(filtros);
   const proveedores = useSuppliers();
   const borrar = useDeleteOrder();
+  const marcarLlegado = useReceiveOrder();
+  const reabrir = useReopenOrder();
 
   function cambiarFiltros(cambios: Partial<OrderFilters>) {
     setFiltros((previos) => ({ ...previos, ...cambios, page: cambios.page ?? 1 }));
@@ -104,6 +114,7 @@ export function OrdersPage() {
     const conProducto = pedido.items.filter((item) => item.productId);
     const sueltas = pedido.items.length - conProducto.length;
     setCompra({
+      orderId: pedido.id,
       supplierId: pedido.supplier?.id,
       notes: `Pedido No. ${pedido.number}${sueltas > 0 ? ` (${sueltas} línea${sueltas === 1 ? '' : 's'} sin producto en inventario no pasaron)` : ''}`,
       items: conProducto.map((item) => ({
@@ -114,7 +125,18 @@ export function OrdersPage() {
     });
   }
 
+  async function ejecutar(accion: () => Promise<unknown>) {
+    setErrorAccion(null);
+    try {
+      await accion();
+    } catch (fallo) {
+      setErrorAccion(fallo instanceof ApiError ? fallo.detalle : 'No se pudo cambiar el pedido');
+    }
+  }
+
+  /** Un pedido que llegó solo se puede ver y descargar; el resto, al pendiente. */
   function acciones(pedido: PurchaseOrder) {
+    const llego = pedido.status === 'RECEIVED';
     return (
       <>
         <Button
@@ -126,15 +148,38 @@ export function OrdersPage() {
           <FileDown className="h-4 w-4" />
           {descargando === pedido.id ? 'Generando...' : 'PDF'}
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Registrar como compra"
-          title="Ya llegó: registrar como compra"
-          onClick={() => registrarComoCompra(pedido)}
-        >
-          <PackageCheck className="h-4 w-4" />
-        </Button>
+        {!llego && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Registrar como compra"
+            title="Ya llegó: registrar como compra"
+            onClick={() => registrarComoCompra(pedido)}
+          >
+            <PackageCheck className="h-4 w-4" />
+          </Button>
+        )}
+        {!llego && (
+          <Button
+            variant="ghost"
+            size="sm"
+            title="Ya llegó, pero la compra se apuntó aparte (o no hace falta)"
+            onClick={() => ejecutar(() => marcarLlegado.mutateAsync(pedido.id))}
+          >
+            Marcar llegado
+          </Button>
+        )}
+        {llego && !pedido.purchaseId && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Volver a pendiente"
+            title="Volver a pendiente de llegada"
+            onClick={() => ejecutar(() => reabrir.mutateAsync(pedido.id))}
+          >
+            <RotateCcw className="h-4 w-4" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
@@ -143,23 +188,45 @@ export function OrdersPage() {
         >
           {detalleId === pedido.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Editar pedido"
-          onClick={() => setFormulario({ abierto: true, pedido })}
-        >
-          <Pencil className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="dangerGhost"
-          size="icon"
-          aria-label="Borrar pedido"
-          onClick={() => setABorrar(pedido)}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        {!llego && (
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Editar pedido"
+              onClick={() => setFormulario({ abierto: true, pedido })}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="dangerGhost"
+              size="icon"
+              aria-label="Borrar pedido"
+              onClick={() => setABorrar(pedido)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </>
+        )}
       </>
+    );
+  }
+
+  /** "Pendiente de llegada" o "Llegó el 12/09", con la compra si la hubo. */
+  function estado(pedido: PurchaseOrder) {
+    if (pedido.status !== 'RECEIVED') return <Badge tone="warning">Pendiente de llegada</Badge>;
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1">
+        <Badge tone="success">
+          Llegó{pedido.receivedAt ? ` el ${formatDate(pedido.receivedAt)}` : ''}
+        </Badge>
+        {pedido.purchase && (
+          <span className="text-xs text-slate-500">
+            compra del {formatDate(pedido.purchase.date)}
+            {pedido.purchase.invoiceNumber ? ` · ${pedido.purchase.invoiceNumber}` : ''}
+          </span>
+        )}
+      </span>
     );
   }
 
@@ -197,6 +264,16 @@ export function OrdersPage() {
               </option>
             ))}
           </Select>
+          <Select
+            className="w-full sm:h-8 sm:w-auto sm:py-0 sm:text-xs"
+            value={filtros.status ?? ''}
+            onChange={(e) => cambiarFiltros({ status: e.target.value as OrderFilters['status'] })}
+            aria-label="Estado del pedido"
+          >
+            <option value="">Pendientes y llegados</option>
+            <option value="PENDING">Pendientes de llegada</option>
+            <option value="RECEIVED">Los que ya llegaron</option>
+          </Select>
         </div>
 
         {errorAccion && (
@@ -226,6 +303,7 @@ export function OrdersPage() {
                   <Fragment key={pedido.id}>
                     <MobileCard
                       title={`Pedido No. ${pedido.number}`}
+                      badge={estado(pedido)}
                       subtitle={`${formatDate(pedido.date)} · ${pedido.supplier?.name ?? 'Sin proveedor'} · ${pedido.items.length} producto${pedido.items.length === 1 ? '' : 's'}`}
                       amount={formatMoney(pedido.total, currency)}
                       actions={acciones(pedido)}
@@ -257,7 +335,12 @@ export function OrdersPage() {
                         <Tr>
                           <Td className="font-medium text-slate-900">{pedido.number}</Td>
                           <Td className="whitespace-nowrap">{formatDate(pedido.date)}</Td>
-                          <Td>{pedido.supplier?.name ?? <span className="text-slate-400">Sin proveedor</span>}</Td>
+                          <Td>
+                            <span className="block">
+                              {pedido.supplier?.name ?? <span className="text-slate-400">Sin proveedor</span>}
+                            </span>
+                            <span className="mt-1 block">{estado(pedido)}</span>
+                          </Td>
                           <Td align="right">{pedido.items.length}</Td>
                           <Td align="right" className="font-semibold text-slate-900">
                             {formatMoney(pedido.total, currency)}

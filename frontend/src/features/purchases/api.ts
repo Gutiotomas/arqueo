@@ -49,6 +49,8 @@ export interface PurchasePayload {
   discountReason?: string;
   /** Lo que se paga en el momento; sin esto la compra queda a deber entera. */
   initialPayment?: PaymentPayload;
+  /** El pedido que llega con esta compra: pasa a "llegó" y queda ligado. */
+  orderId?: string;
 }
 
 /** Lo que se le debía a un proveedor antes de usar Arqueo. */
@@ -97,6 +99,8 @@ function useInvalidarCompras() {
     cliente.invalidateQueries({ queryKey: ['cash'] });
     cliente.invalidateQueries({ queryKey: ['account'] });
     cliente.invalidateQueries({ queryKey: ['suppliers'] });
+    // Registrar o borrar una compra puede cambiar el estado de un pedido.
+    cliente.invalidateQueries({ queryKey: ['purchase-orders'] });
   };
 }
 

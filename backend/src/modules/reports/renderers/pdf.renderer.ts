@@ -526,19 +526,16 @@ export class PdfRenderer {
           body: [
             [this.th('Cantidad'), this.th('Descripción'), this.th('Vr. unidad'), this.th('Vr. total')],
             ...pedido.items.map((item): TableCell[] => [
-              this.td(
-                `${formatQuantity(item.quantity.toString())}${
-                  item.product ? ` ${item.product.unit}` : ''
-                }`,
-                'right',
-              ),
-              this.td(item.description),
+              // La cantidad va sola; el tamaño del paquete ("6 uds") acompaña
+              // al nombre, que es donde se entiende: "6 · Arepa × 6 uds".
+              this.td(formatQuantity(item.quantity.toString()), 'center'),
+              this.td(describir(item.description, item.product?.unit)),
               this.td(dinero(item.unitPrice.toString()), 'right'),
               this.td(dinero(item.subtotal.toString()), 'right'),
             ]),
           ],
         },
-        layout: this.layoutTabla(),
+        layout: this.layoutRejilla(),
       },
       {
         columns: [
@@ -691,6 +688,21 @@ export class PdfRenderer {
     };
   }
 
+  /** Cuadrícula completa, como la cuenta a mano: lineas verticales y horizontales. */
+  private layoutRejilla() {
+    return {
+      hLineWidth: () => 0.6,
+      vLineWidth: () => 0.6,
+      hLineColor: () => '#94a3b8',
+      vLineColor: () => '#94a3b8',
+      paddingTop: () => 6,
+      paddingBottom: () => 6,
+      paddingLeft: () => 6,
+      paddingRight: () => 6,
+      fillColor: (fila: number) => (fila === 0 ? GRIS_CLARO : null),
+    };
+  }
+
   private layoutTabla() {
     return {
       hLineWidth: (i: number) => (i <= 1 ? 0.8 : 0.3),
@@ -702,4 +714,14 @@ export class PdfRenderer {
       paddingRight: () => 2,
     };
   }
+}
+
+/**
+ * El nombre con su tamaño: "Arepa × 6 uds", "Queso (kg)". Las unidades
+ * sueltas ("ud") no aportan nada y se omiten.
+ */
+function describir(nombre: string, unidad: string | undefined): string {
+  const texto = (unidad ?? '').trim();
+  if (!texto || /^(ud|uds|und|unidad|unidades|u)$/i.test(texto)) return nombre;
+  return /^\d/.test(texto) ? `${nombre} × ${texto}` : `${nombre} (${texto})`;
 }

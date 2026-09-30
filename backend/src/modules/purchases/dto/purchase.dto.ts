@@ -126,6 +126,14 @@ export class CreatePurchaseDto {
   @Type(() => PurchasePaymentDto)
   initialPayment?: PurchasePaymentDto;
 
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'El pedido que llega con esta compra: pasa a "llegó" y queda ligado a ella',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  orderId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

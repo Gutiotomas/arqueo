@@ -97,6 +97,7 @@ export class PurchasesService {
   async create(businessId: string, userId: string, dto: CreatePurchaseDto) {
     const productos = await this.validarProductos(businessId, dto);
     const supplierId = await this.resolverProveedor(businessId, dto);
+    const pedido = dto.orderId ? await this.pedidoPendiente(businessId, dto.orderId) : null;
 
     const lineas = dto.items.map((item) => {
       const cantidad = quantity(item.quantity);
@@ -203,6 +204,14 @@ export class PurchasesService {
         });
       }
 
+      // El pedido llego: queda ligado a esta compra y ya no se edita.
+      if (pedido) {
+        await tx.purchaseOrder.update({
+          where: { id: pedido.id },
+          data: { status: 'RECEIVED', receivedAt: creada.date, purchaseId: creada.id },
+        });
+      }
+
       return tx.purchase.findUniqueOrThrow({
         where: { id: creada.id },
         include: PURCHASE_INCLUDE,
@@ -210,6 +219,20 @@ export class PurchasesService {
     });
 
     return this.conSaldo(compra);
+  }
+
+  private async pedidoPendiente(businessId: string, orderId: string) {
+    const pedido = await this.prisma.purchaseOrder.findFirst({
+      where: { id: orderId, businessId },
+      select: { id: true, number: true, status: true },
+    });
+    if (!pedido) {
+      throw new BadRequestException('El pedido indicado no existe');
+    }
+    if (pedido.status === 'RECEIVED') {
+      throw new BadRequestException(`El pedido No. ${pedido.number} ya está marcado como llegado`);
+    }
+    return pedido;
   }
 
   /** Un abono al proveedor: esto si sale de la caja. */
@@ -358,6 +381,11 @@ export class PurchasesService {
           },
         });
       }
+      // Si la compra venia de un pedido, el pedido vuelve a estar pendiente.
+      await tx.purchaseOrder.updateMany({
+        where: { purchaseId: id },
+        data: { status: 'PENDING', receivedAt: null, purchaseId: null },
+      });
       await tx.purchase.delete({ where: { id } });
     });
 

@@ -116,8 +116,15 @@ export class SalesService {
    * lineas, asi que cambiarlas cambia lo que debe.
    */
   async update(businessId: string, userId: string, id: string, dto: CreateSaleDto) {
-    await this.findOne(businessId, id);
-    const lineas = await this.prepareItems(businessId, dto.items);
+    const actual = await this.findOne(businessId, id);
+    // Al corregir una venta vieja, cada producto conserva el costo que tenia
+    // el dia de la venta: editarla no reescribe el margen de aquel dia.
+    const costosDeEntonces = new Map(
+      actual.items
+        .filter((item) => item.productId)
+        .map((item) => [item.productId!, toDecimal(item.unitCost)]),
+    );
+    const lineas = await this.prepareItems(businessId, dto.items, costosDeEntonces);
     const total = sumDecimals(lineas.map((linea) => linea.subtotal));
     const cardFee = await this.comisionDatafono(businessId, lineas);
 
@@ -162,7 +169,11 @@ export class SalesService {
    * de alta al vuelo, como en el mostrador; una linea fiada sin cliente no
    * vale, porque no se sabria a quien cobrarle.
    */
-  private async prepareItems(businessId: string, items: SaleItemDto[]) {
+  private async prepareItems(
+    businessId: string,
+    items: SaleItemDto[],
+    costosDeEntonces = new Map<string, Prisma.Decimal>(),
+  ) {
     const productIds = [
       ...new Set(items.map((item) => item.productId).filter((id): id is string => !!id)),
     ];
@@ -207,7 +218,9 @@ export class SalesService {
         description: descripcion,
         quantity: cantidad,
         unitPrice: precio,
-        unitCost: producto ? toDecimal(producto.costPrice) : new Prisma.Decimal(0),
+        unitCost: producto
+          ? (costosDeEntonces.get(producto.id) ?? toDecimal(producto.costPrice))
+          : new Prisma.Decimal(0),
         subtotal: money(cantidad.times(precio)),
         paymentMethod: item.paymentMethod,
         customerId: item.paymentMethod === 'CREDIT' ? customerId : null,

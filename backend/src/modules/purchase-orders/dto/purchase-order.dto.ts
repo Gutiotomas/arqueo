@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsIn,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -93,4 +94,16 @@ export class PurchaseOrderQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsUUID('4')
   supplierId?: string;
+
+  @ApiPropertyOptional({ enum: ['PENDING', 'RECEIVED'] })
+  @IsOptional()
+  @IsIn(['PENDING', 'RECEIVED'])
+  status?: 'PENDING' | 'RECEIVED';
+}
+
+export class ReceiveOrderDto {
+  @ApiPropertyOptional({ example: '2026-09-29', description: 'Por defecto, hoy' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date debe tener formato YYYY-MM-DD' })
+  date?: string;
 }

@@ -457,12 +457,20 @@ export interface PurchaseOrderItem {
   product: { id: string; name: string; unit: string } | null;
 }
 
+export type PurchaseOrderStatus = 'PENDING' | 'RECEIVED';
+
 export interface PurchaseOrder {
   id: string;
   number: number;
   date: string;
   total: string;
   notes: string | null;
+  /** Pendiente de llegada o ya llegó. Un pedido que llegó no se edita. */
+  status: PurchaseOrderStatus;
+  receivedAt: string | null;
+  /** La compra con la que se registró la llegada, si se hizo desde el pedido. */
+  purchaseId: string | null;
+  purchase: { id: string; date: string; invoiceNumber: string | null } | null;
   items: PurchaseOrderItem[];
   supplier: { id: string; name: string; phone: string | null } | null;
 }

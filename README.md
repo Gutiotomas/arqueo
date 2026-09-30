@@ -17,7 +17,7 @@ abrirlo a más clientes no obliga a reescribir nada.
 | **Gastos** | Con categorías, forma de pago y notas. |
 | **Inventario** | Productos con costo promedio ponderado y precio de venta, stock mínimo, entradas de mercancía y ajustes por conteo físico. Cada movimiento queda registrado. |
 | **Fiados** | Cada línea de una venta puede ir fiada a un cliente: sale del inventario y cuenta como venta ese día, pero suma en el cuaderno de esa persona. Se cobra por partes desde Fiados; cada cobro entra a la caja o a la cuenta el día que se recibe. |
-| **Pedidos a proveedor** | La cuenta a mano pasada a la app: cantidad, producto (del inventario o libre), valor unitario y total, numerada, en PDF para mandársela al proveedor. Cuando llega la mercancía, "Registrar como compra" la convierte en compra sin volver a teclear. |
+| **Pedidos a proveedor** | La cuenta a mano pasada a la app: cantidad, producto (del inventario o libre), valor unitario y total, numerada, en PDF para mandársela al proveedor. Cada pedido está "pendiente de llegada" o "llegó": al registrar la compra desde el pedido pasa a llegó, queda ligado a esa compra y ya no se edita. |
 | **Reparto de ganancias** | Las socias y su porcentaje se configuran en Ajustes. Un reparto no es gasto: la utilidad no cambia, pero Contabilidad muestra lo repartido y lo que queda en el negocio, y lo pagado en efectivo sale de la caja y lo transferido, de la cuenta. |
 | **Compras y deudas** | Las compras a proveedor entran al inventario (no son gasto) y pueden quedar a deber: se van pagando con abonos parciales y la app lleva el saldo por proveedor, con aviso de lo vencido. Lo que ya se debía antes de usar Arqueo se apunta como **deuda anterior**. |
 | **Pérdidas** | Mercancía dañada, vencida o robada. Sale del inventario siempre, pero lo que pierdes depende del proveedor: si la repone gratis no pierdes nada, si la repone cobrando pierdes solo eso, y si no la repone pierdes el costo entero. Los casos sin respuesta quedan marcados hasta que el proveedor conteste. |
@@ -146,7 +146,7 @@ login y `/health`. Documentación interactiva en `/docs`.
 | **sales** | `GET /sales` · `POST` · `GET /:id` · `PUT /:id` · `DELETE /:id` |
 | **expenses** | `GET /expenses` · `POST` · `GET /:id` · `PATCH /:id` · `DELETE /:id` |
 | **expense-categories** | `GET` · `POST` · `PATCH /:id` · `DELETE /:id` |
-| **purchase-orders** | `GET /purchase-orders` · `POST` · `GET /:id` · `GET /:id/pdf` · `PUT /:id` · `DELETE /:id` |
+| **purchase-orders** | `GET /purchase-orders?status=` · `POST` · `GET /:id` · `GET /:id/pdf` · `PUT /:id` · `DELETE /:id` · `PATCH /:id/receive` · `PATCH /:id/reopen` (y `POST /purchases` con `orderId`) |
 | **partners** | `GET /partners` · `POST` · `PATCH /:id` · `DELETE /:id` · `GET /profit-distributions?from&to` · `POST /profit-distributions` · `DELETE /profit-distributions/:id` |
 | **customers** | `GET /customers` · `GET /customers/debt` · `GET /:id/account` · `POST` · `PATCH /:id` · `DELETE /:id` · `POST /:id/payments` · `DELETE /:id/payments/:paymentId` |
 | **cash-closings** | `GET` · `GET /preview?date` · `POST` · `GET /:id` · `PATCH /:id` · `DELETE /:id` |

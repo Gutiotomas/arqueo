@@ -397,6 +397,11 @@ model Supplier {
   @@map("suppliers")
 }
 
+enum PurchaseOrderStatus {
+  PENDING // pedido, pendiente de que llegue
+  RECEIVED // ya llego
+}
+
 /// Lo que se le pide al proveedor, como la cuenta a mano: cantidad, producto,
 /// valor unitario y total. No mueve inventario ni deuda: eso pasa cuando
 /// llega la mercancia y se registra la compra.
@@ -407,16 +412,22 @@ model PurchaseOrder {
   userId     String? @map("user_id") @db.Uuid
 
   /// Numero correlativo por negocio: Pedido No. 12.
-  number    Int
-  date      DateTime @db.Date
-  total     Decimal  @db.Decimal(14, 2)
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  number     Int
+  date       DateTime            @db.Date
+  total      Decimal             @db.Decimal(14, 2)
+  notes      String?
+  /// Pendiente de llegada o ya llegado. Un pedido que llego no se edita.
+  status     PurchaseOrderStatus @default(PENDING)
+  receivedAt DateTime?           @map("received_at") @db.Date
+  /// La compra con la que se registro la llegada, si se hizo desde el pedido.
+  purchaseId String?             @unique @map("purchase_id") @db.Uuid
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
 
   business Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
   supplier Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   user     User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  purchase Purchase?           @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
   items    PurchaseOrderItem[]
 
   @@unique([businessId, number])
@@ -472,6 +483,7 @@ model Purchase {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  order    PurchaseOrder?
   business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
   supplier Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   user     User?             @relation(fields: [userId], references: [id], onDelete: SetNull)

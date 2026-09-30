@@ -440,4 +440,36 @@ describe('Contabilidad y compras (e2e)', () => {
     ).expect(400);
     expect(abonoDeMas.body.message).toMatch(/abono/i);
   });
+
+  it('editar una venta vieja conserva el costo de aquel día aunque hoy el producto cueste otra cosa', async () => {
+    const id = await productoNuevo(`Pan ${sufijo}`, 1000, 10);
+    const venta = await como(
+      http()
+        .post('/api/v1/sales')
+        .send({ date: hoy, items: [{ productId: id, quantity: 2, unitPrice: 2500, paymentMethod: 'CASH' }] }),
+    ).expect(201);
+    expect(venta.body.items[0].unitCost).toBe('1000');
+
+    // El proveedor sube: entran 10 a 3.000. Quedaban 8 a 1.000: (8.000 + 30.000) / 18 = 2.111,11.
+    await como(
+      http().post(`/api/v1/products/${id}/stock-in`).send({ quantity: 10, unitCost: 3000 }),
+    ).expect(201);
+    expect((await costoYStock(id)).costo).toBe(2111.11);
+
+    // Se corrige la cantidad de la venta vieja: su costo sigue siendo el de entonces.
+    const editada = await como(
+      http()
+        .put(`/api/v1/sales/${venta.body.id}`)
+        .send({ date: hoy, items: [{ productId: id, quantity: 3, unitPrice: 2500, paymentMethod: 'CASH' }] }),
+    ).expect(200);
+    expect(editada.body.items[0].unitCost).toBe('1000');
+
+    // Una venta nueva sí sale al costo de hoy.
+    const nueva = await como(
+      http()
+        .post('/api/v1/sales')
+        .send({ date: hoy, items: [{ productId: id, quantity: 1, unitPrice: 2500, paymentMethod: 'CASH' }] }),
+    ).expect(201);
+    expect(nueva.body.items[0].unitCost).toBe('2111.11');
+  });
 });

@@ -50,6 +50,8 @@ function lineaVacia(): Linea {
 
 /** Lo que llega de un pedido para no volver a teclearlo. */
 export interface CompraInicial {
+  /** El pedido del que viene: al guardar pasa a "llegó". */
+  orderId?: string;
   supplierId?: string;
   notes?: string;
   items: { productId: string; quantity: number; unitCost: number }[];
@@ -192,6 +194,7 @@ export function PurchaseFormDialog({
 
     const datos: PurchasePayload = {
       date: fecha,
+      ...(inicial?.orderId ? { orderId: inicial.orderId } : {}),
       ...(proveedorId === PROVEEDOR_NUEVO
         ? { supplierName: proveedorNuevo.trim() }
         : proveedorId

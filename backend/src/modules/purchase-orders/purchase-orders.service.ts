@@ -3,7 +3,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
 import { paginated } from '../../common/dto/pagination.dto';
-import { parseBusinessDate } from '../../common/utils/dates';
+import { parseBusinessDate, todayInTimezone } from '../../common/utils/dates';
 import { fileDate } from '../../common/utils/format';
 import { money, quantity, sumDecimals } from '../../common/utils/money';
 import {
@@ -19,6 +19,7 @@ const ORDER_INCLUDE = {
   },
   supplier: { select: { id: true, name: true, phone: true } },
   business: { select: { name: true, currency: true, timezone: true } },
+  purchase: { select: { id: true, date: true, invoiceNumber: true } },
 } satisfies Prisma.PurchaseOrderInclude;
 
 export type PurchaseOrderData = Prisma.PurchaseOrderGetPayload<{
@@ -45,6 +46,7 @@ export class PurchaseOrdersService {
           }
         : {}),
       ...(query.supplierId ? { supplierId: query.supplierId } : {}),
+      ...(query.status ? { status: query.status } : {}),
     };
 
     const [data, total] = await Promise.all([
@@ -105,7 +107,7 @@ export class PurchaseOrdersService {
 
   /** PUT = reemplazo completo de cabecera y lineas; el numero se conserva. */
   async update(businessId: string, id: string, dto: CreatePurchaseOrderDto) {
-    await this.findOne(businessId, id);
+    this.soloPendiente(await this.findOne(businessId, id), 'editar');
     const lineas = await this.prepararLineas(businessId, dto.items);
     const supplierId = await this.resolverProveedor(businessId, dto);
 
@@ -130,9 +132,53 @@ export class PurchaseOrdersService {
   }
 
   async remove(businessId: string, id: string) {
-    await this.findOne(businessId, id);
+    this.soloPendiente(await this.findOne(businessId, id), 'borrar');
     await this.prisma.purchaseOrder.delete({ where: { id } });
     return { message: 'Pedido eliminado' };
+  }
+
+  /**
+   * Marcar a mano que llego, sin registrar la compra desde aqui (por ejemplo
+   * si la compra ya se apunto aparte).
+   */
+  async receive(businessId: string, id: string, date?: string) {
+    const pedido = this.soloPendiente(await this.findOne(businessId, id), 'marcar');
+    const negocio = await this.prisma.business.findUniqueOrThrow({
+      where: { id: businessId },
+      select: { timezone: true },
+    });
+    await this.prisma.purchaseOrder.update({
+      where: { id: pedido.id },
+      data: {
+        status: 'RECEIVED',
+        receivedAt: parseBusinessDate(date ?? todayInTimezone(negocio.timezone)),
+      },
+    });
+    return this.findOne(businessId, id);
+  }
+
+  /** Vuelve a pendiente. Si llego con una compra, primero hay que borrar la compra. */
+  async reopen(businessId: string, id: string) {
+    const pedido = await this.findOne(businessId, id);
+    if (pedido.purchaseId) {
+      throw new BadRequestException(
+        'Este pedido llegó con una compra registrada: para volverlo a pendiente, borra esa compra',
+      );
+    }
+    await this.prisma.purchaseOrder.update({
+      where: { id },
+      data: { status: 'PENDING', receivedAt: null },
+    });
+    return this.findOne(businessId, id);
+  }
+
+  private soloPendiente(pedido: PurchaseOrderData, accion: string) {
+    if (pedido.status === 'RECEIVED') {
+      throw new BadRequestException(
+        `El pedido No. ${pedido.number} ya llegó: no se puede ${accion}. Si fue un error, vuélvelo a pendiente.`,
+      );
+    }
+    return pedido;
   }
 
   /** arqueo-pedido-12-07-09-2026.pdf */

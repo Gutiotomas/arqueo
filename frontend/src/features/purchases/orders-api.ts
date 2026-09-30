@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, downloadFile } from '@/shared/api/client';
-import type { Paginated, PurchaseOrder } from '@/shared/api/types';
+import type { Paginated, PurchaseOrder, PurchaseOrderStatus } from '@/shared/api/types';
 
 export interface OrderFilters {
   from?: string;
   to?: string;
   supplierId?: string;
+  status?: PurchaseOrderStatus | '';
   page: number;
   limit: number;
 }
@@ -48,6 +49,23 @@ export function useUpdateOrder() {
   return useMutation({
     mutationFn: ({ id, datos }: { id: string; datos: OrderPayload }) =>
       api.put<PurchaseOrder>(`/purchase-orders/${id}`, datos),
+    onSuccess: invalidar,
+  });
+}
+
+/** Marcar a mano que llegó, sin registrar la compra desde el pedido. */
+export function useReceiveOrder() {
+  const invalidar = useInvalidarPedidos();
+  return useMutation({
+    mutationFn: (id: string) => api.patch<PurchaseOrder>(`/purchase-orders/${id}/receive`, {}),
+    onSuccess: invalidar,
+  });
+}
+
+export function useReopenOrder() {
+  const invalidar = useInvalidarPedidos();
+  return useMutation({
+    mutationFn: (id: string) => api.patch<PurchaseOrder>(`/purchase-orders/${id}/reopen`, {}),
     onSuccess: invalidar,
   });
 }

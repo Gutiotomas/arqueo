@@ -159,4 +159,63 @@ describe('Pedidos a proveedor (e2e)', () => {
     await como(http().delete(`/api/v1/purchase-orders/${pedidoId}`)).expect(200);
     await como(http().get(`/api/v1/purchase-orders/${pedidoId}`)).expect(404);
   });
+
+  it('registrar la compra desde el pedido lo marca como llegado y lo bloquea; borrar la compra lo reabre', async () => {
+    const pedido = await como(
+      http()
+        .post('/api/v1/purchase-orders')
+        .send({ date: '2026-09-10', supplierName: 'Gustavo', items: [{ productId: cuajadas, quantity: 4, unitPrice: 6800 }] }),
+    ).expect(201);
+    expect(pedido.body.status).toBe('PENDING');
+
+    const compra = await como(
+      http()
+        .post('/api/v1/purchases')
+        .send({
+          date: '2026-09-12',
+          supplierName: 'Gustavo',
+          orderId: pedido.body.id,
+          items: [{ productId: cuajadas, quantity: 4, unitCost: 6800 }],
+        }),
+    ).expect(201);
+
+    const llegado = await como(http().get(`/api/v1/purchase-orders/${pedido.body.id}`)).expect(200);
+    expect(llegado.body.status).toBe('RECEIVED');
+    expect(llegado.body.receivedAt).toMatch(/^2026-09-12/);
+    expect(llegado.body.purchase.id).toBe(compra.body.id);
+
+    const editar = await como(
+      http()
+        .put(`/api/v1/purchase-orders/${pedido.body.id}`)
+        .send({ date: '2026-09-10', items: [{ productId: cuajadas, quantity: 9, unitPrice: 6800 }] }),
+    ).expect(400);
+    expect(editar.body.message).toMatch(/ya llegó/i);
+    const borrar = await como(http().delete(`/api/v1/purchase-orders/${pedido.body.id}`)).expect(400);
+    expect(borrar.body.message).toMatch(/ya llegó/i);
+    const reabrir = await como(http().patch(`/api/v1/purchase-orders/${pedido.body.id}/reopen`)).expect(400);
+    expect(reabrir.body.message).toMatch(/borra esa compra/i);
+
+    // La misma compra no puede "llegar" dos veces.
+    const repetido = await como(
+      http()
+        .post('/api/v1/purchases')
+        .send({ date: '2026-09-12', orderId: pedido.body.id, items: [{ productId: cuajadas, quantity: 1, unitCost: 6800 }] }),
+    ).expect(400);
+    expect(repetido.body.message).toMatch(/ya está marcado/i);
+
+    await como(http().delete(`/api/v1/purchases/${compra.body.id}`)).expect(200);
+    const reabierto = await como(http().get(`/api/v1/purchase-orders/${pedido.body.id}`)).expect(200);
+    expect(reabierto.body.status).toBe('PENDING');
+    expect(reabierto.body.purchase).toBeNull();
+
+    // Marcar a mano y volver a pendiente, sin compra de por medio.
+    const aMano = await como(
+      http().patch(`/api/v1/purchase-orders/${pedido.body.id}/receive`).send({ date: '2026-09-13' }),
+    ).expect(200);
+    expect(aMano.body.status).toBe('RECEIVED');
+    const pendientes = await como(http().get('/api/v1/purchase-orders?status=PENDING')).expect(200);
+    expect(pendientes.body.data.map((p: { id: string }) => p.id)).not.toContain(pedido.body.id);
+    const vuelto = await como(http().patch(`/api/v1/purchase-orders/${pedido.body.id}/reopen`)).expect(200);
+    expect(vuelto.body.status).toBe('PENDING');
+  });
 });
