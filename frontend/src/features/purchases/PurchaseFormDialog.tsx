@@ -6,9 +6,7 @@ import { useCreatePurchase, useSuppliers, type PurchasePayload } from './api';
 import { useAuth } from '@/features/auth/auth-context';
 import { ApiError, api } from '@/shared/api/client';
 import {
-  PAYMENT_METHODS,
   type Paginated,
-  type PaymentMethod,
   type Product,
 } from '@/shared/api/types';
 import { cn } from '@/shared/lib/cn';
@@ -18,6 +16,7 @@ import { cantidadConUnidad, pasoCantidad } from '@/shared/lib/unidades';
 import { useEnfocarNuevo } from '@/shared/lib/use-enfocar-nuevo';
 import { ELEGIR_PRODUCTO } from '@/shared/lib/productos';
 import { AddRowButton } from '@/shared/ui/add-row-button';
+import { PartesDePago, partePago, sumaPartes, type PartePago } from '@/shared/ui/partes-de-pago';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
@@ -28,12 +27,11 @@ const ETIQUETA = 'mb-1 block text-xs font-medium text-slate-500';
 /** Valor del desplegable de proveedor cuando se va a escribir uno nuevo. */
 const PROVEEDOR_NUEVO = '__nuevo__';
 
-type ComoPago = 'total' | 'parcial' | 'nada';
+type ComoPago = 'nada' | 'algo';
 
 const OPCIONES_PAGO: { valor: ComoPago; titulo: string; pie: string }[] = [
-  { valor: 'total', titulo: 'Pagué todo', pie: 'No queda deuda' },
-  { valor: 'parcial', titulo: 'Abono parcial', pie: 'Pagas una parte' },
   { valor: 'nada', titulo: 'Queda a deber', pie: 'Lo pagas después' },
+  { valor: 'algo', titulo: 'Pagué todo o una parte', pie: 'En efectivo, de la cuenta, o repartido' },
 ];
 
 interface Linea {
@@ -82,8 +80,8 @@ export function PurchaseFormDialog({
   const [descuento, setDescuento] = useState<number | ''>('');
   const [motivoDescuento, setMotivoDescuento] = useState('');
   const [comoPago, setComoPago] = useState<ComoPago>('nada');
-  const [abono, setAbono] = useState<number | ''>('');
-  const [formaDePago, setFormaDePago] = useState<PaymentMethod>('CASH');
+  // Lo que se paga ahora, por partes: "200.000 en efectivo y 300.000 de la cuenta".
+  const [partesPago, setPartesPago] = useState<PartePago[]>([partePago()]);
   const [error, setError] = useState<string | null>(null);
 
   // Catálogo para el desplegable de productos.
@@ -121,8 +119,7 @@ export function PurchaseFormDialog({
     setDescuento('');
     setMotivoDescuento('');
     setComoPago('nada');
-    setAbono('');
-    setFormaDePago('CASH');
+    setPartesPago([partePago()]);
     setError(null);
   }, [open, inicial]);
 
@@ -147,9 +144,7 @@ export function PurchaseFormDialog({
   );
   const total = subtotal - Number(descuento || 0);
 
-  const pagadoAhora = roundMoney(
-    comoPago === 'total' ? total : comoPago === 'parcial' ? Number(abono || 0) : 0,
-  );
+  const pagadoAhora = roundMoney(comoPago === 'algo' ? sumaPartes(partesPago) : 0);
   const quedaADeber = total - pagadoAhora;
 
   async function guardar() {
@@ -183,12 +178,12 @@ export function PurchaseFormDialog({
       setError('El descuento no puede ser mayor que la suma de los productos');
       return;
     }
-    if (comoPago === 'parcial' && Number(abono || 0) <= 0) {
+    if (comoPago === 'algo' && pagadoAhora <= 0) {
       setError('Escribe cuánto pagaste ahora');
       return;
     }
-    if (comoPago === 'parcial' && Number(abono || 0) > total) {
-      setError('El abono no puede ser mayor que el total de la compra');
+    if (comoPago === 'algo' && pagadoAhora > total + 0.005) {
+      setError('Lo pagado no puede ser mayor que el total de la compra');
       return;
     }
 
@@ -212,11 +207,13 @@ export function PurchaseFormDialog({
         : {}),
       ...(pagadoAhora > 0
         ? {
-            initialPayment: {
-              date: fecha,
-              amount: pagadoAhora,
-              paymentMethod: formaDePago,
-            },
+            initialPayments: partesPago
+              .filter((parte) => Number(parte.amount || 0) > 0)
+              .map((parte) => ({
+                date: fecha,
+                amount: roundMoney(Number(parte.amount)),
+                paymentMethod: parte.paymentMethod,
+              })),
           }
         : {}),
     };
@@ -444,12 +441,19 @@ export function PurchaseFormDialog({
             Lo que no pagues hoy queda como deuda con el proveedor.
           </p>
 
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {OPCIONES_PAGO.map((opcion) => (
               <button
                 key={opcion.valor}
                 type="button"
-                onClick={() => setComoPago(opcion.valor)}
+                onClick={() => {
+                  setComoPago(opcion.valor);
+                  // Al elegir pagar, la primera parte propone el total: un
+                  // solo toque para "pagué todo en efectivo".
+                  if (opcion.valor === 'algo' && sumaPartes(partesPago) === 0) {
+                    setPartesPago([partePago(total > 0 ? roundMoney(total) : '')]);
+                  }
+                }}
                 className={cn(
                   'rounded-lg border px-3 py-2.5 text-left transition-colors',
                   comoPago === opcion.valor
@@ -463,32 +467,18 @@ export function PurchaseFormDialog({
             ))}
           </div>
 
-          {comoPago === 'parcial' && (
-            <Field className="mt-3" label="Cuánto pagaste ahora">
-              <MoneyInput
-                aria-label="Abono inicial"
-                value={abono}
-                onValueChange={setAbono}
-              />
-            </Field>
-          )}
-
-          {pagadoAhora > 0 && (
+          {comoPago === 'algo' && (
             <Field
               className="mt-3"
-              label="Cómo lo pagaste"
-              hint="En efectivo sale de la caja del día."
+              label="Cuánto y con qué"
+              hint="El efectivo sale de la caja del día; transferencia o tarjeta, de la cuenta."
             >
-              <Select
-                value={formaDePago}
-                onChange={(e) => setFormaDePago(e.target.value as PaymentMethod)}
-              >
-                {PAYMENT_METHODS.map((metodo) => (
-                  <option key={metodo.value} value={metodo.value}>
-                    {metodo.label}
-                  </option>
-                ))}
-              </Select>
+              <PartesDePago
+                partes={partesPago}
+                onChange={setPartesPago}
+                currency={currency}
+                maximo={total}
+              />
             </Field>
           )}
         </div>

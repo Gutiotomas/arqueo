@@ -57,8 +57,15 @@ export class BankAccountService {
       this.hoy(businessId),
     ]);
 
+    // Sin cierre no hay saldo, pero las transferencias entran igual: se
+    // enseña lo que ha pasado por la cuenta desde el primer dia, para que se
+    // vea que suma aunque falte el punto de partida.
     if (!ultimo) {
-      return { lastClosing: null, estimatedBalance: null, sinceLastClosing: null };
+      const flujos = await this.flujos(businessId, {
+        desde: new Date('1970-01-01T00:00:00.000Z'),
+        hasta: parseBusinessDate(hoy),
+      });
+      return { lastClosing: null, estimatedBalance: null, sinceLastClosing: this.serializarFlujos(flujos) };
     }
 
     const flujos = await this.flujos(businessId, {

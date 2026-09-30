@@ -19,6 +19,7 @@ import {
   CreatePurchaseDto,
   OpeningBalanceDto,
   PurchasePaymentDto,
+  PurchasePaymentsDto,
   PurchaseQueryDto,
   SupplierDto,
 } from './dto/purchase.dto';
@@ -83,6 +84,18 @@ export class PurchasesController {
     @Body() dto: PurchasePaymentDto,
   ) {
     return this.purchases.addPayment(user.businessId, user.userId, id, dto);
+  }
+
+  @Post(':id/payments/split')
+  @ApiOperation({
+    summary: 'Varios abonos de una vez: parte en efectivo, parte de la cuenta',
+  })
+  addPayments(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PurchasePaymentsDto,
+  ) {
+    return this.purchases.addPayments(user.businessId, user.userId, id, dto);
   }
 
   @Delete(':id/payments/:paymentId')

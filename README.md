@@ -139,7 +139,7 @@ login y `/health`. Documentación interactiva en `/docs`.
 | **auth** | `POST /auth/register` · `POST /auth/login` · `GET /auth/me` · `PATCH /auth/password` |
 | **business** | `GET /business` · `PATCH /business` |
 | **products** | `GET /products` · `POST` · `GET /:id` · `PATCH /:id` · `DELETE /:id` · `POST /:id/stock-in` · `POST /:id/adjust-stock` (ambos con `purchaseId` opcional) · `POST /:id/convert` · `GET /:id/purchases` · `GET /:id/movements` · `GET /products/low-stock` |
-| **purchases** | `GET /purchases` · `POST` · `GET /:id` · `DELETE /:id` · `POST /:id/payments` · `DELETE /:id/payments/:paymentId` · `GET /purchases/debt` · `POST /purchases/opening-balance` |
+| **purchases** | `GET /purchases` · `POST` · `GET /:id` · `DELETE /:id` · `POST /:id/payments` · `POST /:id/payments/split` · `DELETE /:id/payments/:paymentId` · `GET /purchases/debt` · `POST /purchases/opening-balance` |
 | **suppliers** | `GET` · `POST` · `PATCH /:id` · `DELETE /:id` |
 | **losses** | `GET /losses` · `POST` · `GET /:id` · `PATCH /:id/resolve` · `DELETE /:id` · `GET /losses/summary` |
 | **product-categories** | `GET` · `POST` · `PATCH /:id` · `DELETE /:id` |
@@ -220,10 +220,19 @@ lo muestra debajo de la utilidad como "Repartido a las socias" y "Queda en el
 negocio". El dinero sí sale: en efectivo, de la caja de ese día; por
 transferencia o tarjeta, de la cuenta; como "otro", de ninguna.
 
-**Al proveedor se le puede ir pagando de a poco.** Una compra guarda su total y
-lo abonado; cada abono es una salida de caja de verdad (y se descuenta en el
-cierre de caja si fue en efectivo), mientras que la compra en sí no toca la
-caja hasta que se paga.
+**Al proveedor se le puede ir pagando de a poco, y repartido.** Una compra
+guarda su total y lo abonado; cada abono es una salida de dinero de verdad (de
+la caja si fue en efectivo, de la cuenta si fue por transferencia o tarjeta),
+mientras que la compra en sí no toca nada hasta que se paga. Un mismo pago se
+puede dividir: "200.000 en efectivo y 300.000 de la cuenta" son dos abonos
+guardados a la vez (`POST /purchases/:id/payments/split`, o `initialPayments`
+al crear la compra), y si entre todos se pasan del saldo no entra ninguno.
+
+**Las transferencias suman solas a la cuenta.** Toda venta por transferencia o
+tarjeta, todo cobro de un fiado por esa vía y toda consignación entran en el
+flujo de la cuenta en el momento; no hay que apuntarlas aparte. Lo que falta
+sin un primer cierre es el punto de partida: hasta entonces la pantalla de
+Cuenta enseña lo que ha entrado y salido, pero no puede decir cuánto hay.
 
 **El descuento del proveedor no toca el costo de los productos.** Si la compra
 suma 90.000 y el proveedor resta 15.000 (un cruce, una devolución, una

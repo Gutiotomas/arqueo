@@ -14,6 +14,7 @@ import {
   CreatePurchaseDto,
   OpeningBalanceDto,
   PurchasePaymentDto,
+  PurchasePaymentsDto,
   PurchaseQueryDto,
 } from './dto/purchase.dto';
 
@@ -118,7 +119,15 @@ export class PurchasesService {
       );
     }
     const total = money(subtotal.minus(descuento));
-    const abono = dto.initialPayment ? money(dto.initialPayment.amount) : null;
+    // Lo que se paga en el momento puede venir repartido: parte en efectivo,
+    // parte de la cuenta.
+    const pagosIniciales = [
+      ...(dto.initialPayment ? [dto.initialPayment] : []),
+      ...(dto.initialPayments ?? []),
+    ];
+    const abono = pagosIniciales.length
+      ? sumDecimals(pagosIniciales.map((pago) => money(pago.amount)))
+      : null;
 
     if (abono && abono.greaterThan(total)) {
       throw new BadRequestException(
@@ -190,16 +199,16 @@ export class PurchasesService {
         });
       }
 
-      if (dto.initialPayment && abono) {
+      for (const pago of pagosIniciales) {
         await tx.purchasePayment.create({
           data: {
             businessId,
             purchaseId: creada.id,
             userId,
-            date: parseBusinessDate(dto.initialPayment.date),
-            amount: abono,
-            paymentMethod: dto.initialPayment.paymentMethod,
-            notes: dto.initialPayment.notes?.trim() || null,
+            date: parseBusinessDate(pago.date),
+            amount: money(pago.amount),
+            paymentMethod: pago.paymentMethod,
+            notes: pago.notes?.trim() || null,
           },
         });
       }
@@ -236,38 +245,52 @@ export class PurchasesService {
   }
 
   /** Un abono al proveedor: esto si sale de la caja. */
-  async addPayment(
+  addPayment(businessId: string, userId: string, purchaseId: string, dto: PurchasePaymentDto) {
+    return this.addPayments(businessId, userId, purchaseId, { payments: [dto] });
+  }
+
+  /**
+   * Varios abonos de una vez: "pagué 200.000 en efectivo y 300.000 de la
+   * cuenta". Entre todos no pueden pasar del saldo; o entran todos o ninguno.
+   */
+  async addPayments(
     businessId: string,
     userId: string,
     purchaseId: string,
-    dto: PurchasePaymentDto,
+    dto: PurchasePaymentsDto,
   ) {
     const compra = await this.findOne(businessId, purchaseId);
-    const abono = money(dto.amount);
+    if (dto.payments.some((pago) => pago.paymentMethod === 'CREDIT')) {
+      throw new BadRequestException('Un abono no se puede fiar: di con qué pagaste');
+    }
+    const abonos = dto.payments.map((pago) => money(pago.amount));
+    const total = sumDecimals(abonos);
     const saldo = toDecimal(compra.balance);
 
-    if (abono.greaterThan(saldo)) {
+    if (total.greaterThan(saldo)) {
       throw new BadRequestException(
         `El abono supera lo que queda por pagar (${saldo.toFixed(2)})`,
       );
     }
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.purchasePayment.create({
-        data: {
-          businessId,
-          purchaseId,
-          userId,
-          date: parseBusinessDate(dto.date),
-          amount: abono,
-          paymentMethod: dto.paymentMethod,
-          notes: dto.notes?.trim() || null,
-        },
-      });
+      for (const [indice, pago] of dto.payments.entries()) {
+        await tx.purchasePayment.create({
+          data: {
+            businessId,
+            purchaseId,
+            userId,
+            date: parseBusinessDate(pago.date),
+            amount: abonos[indice]!,
+            paymentMethod: pago.paymentMethod,
+            notes: pago.notes?.trim() || null,
+          },
+        });
+      }
 
       await tx.purchase.update({
         where: { id: purchaseId },
-        data: { paidAmount: { increment: abono } },
+        data: { paidAmount: { increment: total } },
       });
     });
 

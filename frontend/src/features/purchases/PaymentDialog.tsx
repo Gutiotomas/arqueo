@@ -1,18 +1,15 @@
 import { useEffect, useState } from 'react';
 
-import { useAddPayment, type PaymentPayload } from './api';
+import { useAddPayments, type PaymentPayload } from './api';
 import { useAuth } from '@/features/auth/auth-context';
 import { ApiError } from '@/shared/api/client';
-import {
-  PAYMENT_METHODS,
-  type PaymentMethod,
-  type Purchase,
-} from '@/shared/api/types';
+import type { Purchase } from '@/shared/api/types';
 import { formatDate, today } from '@/shared/lib/dates';
 import { formatMoney, toNumber } from '@/shared/lib/money';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
-import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
+import { Field, Input, Textarea } from '@/shared/ui/field';
+import { PartesDePago, partePago, sumaPartes, type PartePago } from '@/shared/ui/partes-de-pago';
 
 export function PaymentDialog({
   open,
@@ -24,11 +21,11 @@ export function PaymentDialog({
   compra: Purchase | null;
 }) {
   const { currency } = useAuth();
-  const abonar = useAddPayment();
+  const abonar = useAddPayments();
 
   const [fecha, setFecha] = useState(today());
-  const [importe, setImporte] = useState<number | ''>('');
-  const [formaDePago, setFormaDePago] = useState<PaymentMethod>('CASH');
+  // "200.000 en efectivo y 300.000 de la cuenta": el abono puede ir por partes.
+  const [partes, setPartes] = useState<PartePago[]>([partePago()]);
   const [notas, setNotas] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -38,8 +35,7 @@ export function PaymentDialog({
   useEffect(() => {
     if (!open) return;
     setFecha(today());
-    setImporte('');
-    setFormaDePago('CASH');
+    setPartes([partePago()]);
     setNotas('');
     setError(null);
   }, [open, compra?.id]);
@@ -48,7 +44,7 @@ export function PaymentDialog({
     setError(null);
     if (!compra) return;
 
-    const cantidad = Number(importe || 0);
+    const cantidad = sumaPartes(partes);
     if (cantidad <= 0) {
       setError('Escribe cuánto vas a abonar');
       return;
@@ -60,15 +56,17 @@ export function PaymentDialog({
       return;
     }
 
-    const datos: PaymentPayload = {
-      date: fecha,
-      amount: cantidad,
-      paymentMethod: formaDePago,
-      ...(notas.trim() ? { notes: notas.trim() } : {}),
-    };
+    const pagos: PaymentPayload[] = partes
+      .filter((parte) => Number(parte.amount || 0) > 0)
+      .map((parte) => ({
+        date: fecha,
+        amount: Number(parte.amount),
+        paymentMethod: parte.paymentMethod,
+        ...(notas.trim() ? { notes: notas.trim() } : {}),
+      }));
 
     try {
-      await abonar.mutateAsync({ purchaseId: compra.id, datos });
+      await abonar.mutateAsync({ purchaseId: compra.id, pagos });
       onOpenChange(false);
     } catch (fallo) {
       // El API sabe el saldo exacto: su mensaje manda sobre el nuestro.
@@ -78,7 +76,7 @@ export function PaymentDialog({
     }
   }
 
-  const restante = saldo - Number(importe || 0);
+  const restante = saldo - sumaPartes(partes);
 
   return (
     <Dialog
@@ -116,44 +114,26 @@ export function PaymentDialog({
             variant="secondary"
             size="sm"
             className="mt-2 w-full"
-            onClick={() => setImporte(saldo)}
+            onClick={() => setPartes([partePago(saldo, partes[0]?.paymentMethod)])}
           >
             Pagar todo el saldo
           </Button>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Cuánto abonas">
-            <MoneyInput
-              aria-label="Importe del abono"
-              value={importe}
-              onValueChange={setImporte}
-            />
-          </Field>
-          <Field label="Fecha del abono">
-            <Input
-              type="date"
-              value={fecha}
-              max={today()}
-              onChange={(e) => setFecha(e.target.value)}
-            />
-          </Field>
-        </div>
+        <Field label="Fecha del abono" className="sm:max-w-xs">
+          <Input
+            type="date"
+            value={fecha}
+            max={today()}
+            onChange={(e) => setFecha(e.target.value)}
+          />
+        </Field>
 
         <Field
-          label="Cómo lo pagas"
-          hint="Si pagas en efectivo, el dinero sale de la caja de ese día y el cierre lo tendrá en cuenta."
+          label="Cuánto y con qué"
+          hint="El efectivo sale de la caja de ese día; transferencia o tarjeta, de la cuenta."
         >
-          <Select
-            value={formaDePago}
-            onChange={(e) => setFormaDePago(e.target.value as PaymentMethod)}
-          >
-            {PAYMENT_METHODS.map((metodo) => (
-              <option key={metodo.value} value={metodo.value}>
-                {metodo.label}
-              </option>
-            ))}
-          </Select>
+          <PartesDePago partes={partes} onChange={setPartes} currency={currency} maximo={saldo} />
         </Field>
 
         <Field label="Notas (opcional)">

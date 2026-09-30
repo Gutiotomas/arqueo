@@ -49,6 +49,8 @@ export interface PurchasePayload {
   discountReason?: string;
   /** Lo que se paga en el momento; sin esto la compra queda a deber entera. */
   initialPayment?: PaymentPayload;
+  /** Lo mismo, repartido: parte en efectivo y parte de la cuenta. */
+  initialPayments?: PaymentPayload[];
   /** El pedido que llega con esta compra: pasa a "llegó" y queda ligado. */
   orderId?: string;
 }
@@ -134,6 +136,16 @@ export function useAddPayment() {
   return useMutation({
     mutationFn: ({ purchaseId, datos }: { purchaseId: string; datos: PaymentPayload }) =>
       api.post<Purchase>(`/purchases/${purchaseId}/payments`, datos),
+    onSuccess: invalidar,
+  });
+}
+
+/** Varios abonos de una vez: parte en efectivo, parte de la cuenta. */
+export function useAddPayments() {
+  const invalidar = useInvalidarCompras();
+  return useMutation({
+    mutationFn: ({ purchaseId, pagos }: { purchaseId: string; pagos: PaymentPayload[] }) =>
+      api.post<Purchase>(`/purchases/${purchaseId}/payments/split`, { payments: pagos }),
     onSuccess: invalidar,
   });
 }

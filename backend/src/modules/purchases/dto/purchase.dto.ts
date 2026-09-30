@@ -59,6 +59,16 @@ export class PurchasePaymentDto {
   notes?: string;
 }
 
+/** Varios pagos de una vez: parte en efectivo, parte de la cuenta. */
+export class PurchasePaymentsDto {
+  @ApiProperty({ type: [PurchasePaymentDto] })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Hace falta al menos un pago' })
+  @ValidateNested({ each: true })
+  @Type(() => PurchasePaymentDto)
+  payments!: PurchasePaymentDto[];
+}
+
 export class CreatePurchaseDto {
   @ApiProperty({ example: '2026-09-19' })
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'La fecha debe tener formato YYYY-MM-DD' })
@@ -125,6 +135,16 @@ export class CreatePurchaseDto {
   @ValidateNested()
   @Type(() => PurchasePaymentDto)
   initialPayment?: PurchasePaymentDto;
+
+  @ApiPropertyOptional({
+    type: [PurchasePaymentDto],
+    description: 'Lo mismo, repartido: parte en efectivo y parte de la cuenta.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PurchasePaymentDto)
+  initialPayments?: PurchasePaymentDto[];
 
   @ApiPropertyOptional({
     format: 'uuid',

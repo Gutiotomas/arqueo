@@ -565,18 +565,42 @@ function SaldoDeHoy({
 
   const ultimo = resumen.data?.lastClosing;
   if (!ultimo || resumen.data?.estimatedBalance === null) {
+    // Sin punto de partida no hay saldo, pero lo que entra y sale por la
+    // cuenta ya se cuenta: se enseña para que se vea que las transferencias
+    // suman solas.
+    const m = resumen.data?.sinceLastClosing;
+    const entradas = m
+      ? toNumber(m.transferSales) + toNumber(m.cardSales) - toNumber(m.cardFees) + toNumber(m.collections) + toNumber(m.cashDeposits) + toNumber(m.otherIn)
+      : 0;
+    const salidas = m
+      ? toNumber(m.expenses) + toNumber(m.supplierPayments) + toNumber(m.cashWithdrawals) + toNumber(m.otherOut) + toNumber(m.partnerWithdrawals)
+      : 0;
     return (
-      <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
-        <div>
-          <p className="text-sm font-medium text-slate-900">
-            Todavía no sabemos cuánto tienes en la cuenta
-          </p>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Haz tu primer cierre abajo con lo que dice la app del banco, y desde
-            ahí se lleva la cuenta sola.
-          </p>
+      <Card className="px-4 py-4 sm:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-slate-900">
+              Todavía no sabemos cuánto tienes en la cuenta
+            </p>
+            <p className="mt-0.5 text-sm text-slate-500">
+              Haz tu primer cierre abajo con lo que dice la app del banco, y desde
+              ahí se lleva la cuenta sola.
+            </p>
+          </div>
+          {boton}
         </div>
-        {boton}
+        {m && (entradas > 0 || salidas > 0) && (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <p className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              <span>Ha entrado por la cuenta (transferencias, tarjeta, cobros)</span>
+              <span className="tabular font-semibold">+ {formatMoney(entradas, currency)}</span>
+            </p>
+            <p className="flex items-center justify-between rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-800">
+              <span>Ha salido por la cuenta (gastos, pagos, retiros)</span>
+              <span className="tabular font-semibold">− {formatMoney(salidas, currency)}</span>
+            </p>
+          </div>
+        )}
       </Card>
     );
   }

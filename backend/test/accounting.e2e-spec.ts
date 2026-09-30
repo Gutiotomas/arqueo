@@ -472,4 +472,63 @@ describe('Contabilidad y compras (e2e)', () => {
     ).expect(201);
     expect(nueva.body.items[0].unitCost).toBe('2111.11');
   });
+
+  it('un pago repartido sale en parte de la caja y en parte de la cuenta', async () => {
+    const id = await productoNuevo(`Yogur ${sufijo}`, 0, 0);
+    const compra = await como(
+      http()
+        .post('/api/v1/purchases')
+        .send({
+          date: hoy,
+          supplierName: 'Distribuidora de prueba',
+          items: [{ productId: id, quantity: 10, unitCost: 5000 }],
+          // 50.000: 20.000 en efectivo y 25.000 de la cuenta; quedan 5.000 a deber.
+          initialPayments: [
+            { date: hoy, amount: 20000, paymentMethod: 'CASH' },
+            { date: hoy, amount: 25000, paymentMethod: 'TRANSFER' },
+          ],
+        }),
+    ).expect(201);
+    expect(Number(compra.body.paidAmount)).toBe(45000);
+    expect(Number(compra.body.balance)).toBe(5000);
+    expect(compra.body.payments).toHaveLength(2);
+
+    const cajaAntes = await como(
+      http().get(`/api/v1/cash-closings/preview?date=${hoy}&openingCash=0`),
+    ).expect(200);
+    // El resto, repartido otra vez: 3.000 efectivo + 2.000 tarjeta, en una sola operación.
+    const abonado = await como(
+      http()
+        .post(`/api/v1/purchases/${compra.body.id}/payments/split`)
+        .send({
+          payments: [
+            { date: hoy, amount: 3000, paymentMethod: 'CASH' },
+            { date: hoy, amount: 2000, paymentMethod: 'CARD' },
+          ],
+        }),
+    ).expect(201);
+    expect(abonado.body.status).toBe('paid');
+    expect(abonado.body.payments).toHaveLength(4);
+    const cajaDespues = await como(
+      http().get(`/api/v1/cash-closings/preview?date=${hoy}&openingCash=0`),
+    ).expect(200);
+    expect(
+      Number(cajaDespues.body.cashSupplierPayments) - Number(cajaAntes.body.cashSupplierPayments),
+    ).toBe(3000);
+
+    // Entre todas las partes no se puede pasar del saldo: o entran todas o ninguna.
+    const deMas = await como(
+      http()
+        .post(`/api/v1/purchases/${compra.body.id}/payments/split`)
+        .send({
+          payments: [
+            { date: hoy, amount: 1, paymentMethod: 'CASH' },
+            { date: hoy, amount: 1, paymentMethod: 'TRANSFER' },
+          ],
+        }),
+    ).expect(400);
+    expect(deMas.body.message).toMatch(/supera|mayor/i);
+    const sigue = await como(http().get(`/api/v1/purchases/${compra.body.id}`)).expect(200);
+    expect(sigue.body.payments).toHaveLength(4);
+  });
 });
