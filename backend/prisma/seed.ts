@@ -798,6 +798,7 @@ async function main(): Promise<void> {
       supplierId: proveedores[0]!.id,
       number: 1,
       date: fecha(0),
+      subtotal: lineasPedido.reduce((suma, l) => suma.plus(l.subtotal), new Prisma.Decimal(0)),
       total: lineasPedido.reduce((suma, l) => suma.plus(l.subtotal), new Prisma.Decimal(0)),
       notes: 'Para el lunes',
       items: { createMany: { data: lineasPedido } },

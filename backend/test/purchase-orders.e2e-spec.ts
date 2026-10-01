@@ -83,6 +83,8 @@ describe('Pedidos a proveedor (e2e)', () => {
     pedidoId = pedido.body.id;
     expect(pedido.body.number).toBe(1);
     expect(pedido.body.supplier.name).toBe('Gustavo');
+    expect(pedido.body.subtotal).toBe('124600');
+    expect(pedido.body.discount).toBe('0');
     expect(pedido.body.total).toBe('124600');
     expect(pedido.body.items.map((i: { description: string; subtotal: string }) => [i.description, i.subtotal])).toEqual([
       ['Cuajadas', '40800'],
@@ -105,7 +107,7 @@ describe('Pedidos a proveedor (e2e)', () => {
     expect(segundo.body.supplier).toBeNull();
   });
 
-  it('se puede corregir sin perder el número, y se descarga en PDF', async () => {
+  it('se puede corregir sin perder el número, lleva el descuento del proveedor y se descarga en PDF', async () => {
     const corregido = await como(
       http()
         .put(`/api/v1/purchase-orders/${pedidoId}`)
@@ -113,11 +115,27 @@ describe('Pedidos a proveedor (e2e)', () => {
           date: '2026-09-07',
           supplierName: 'Gustavo',
           items: [{ productId: cuajadas, quantity: 8, unitPrice: 6800 }],
+          discount: 4400,
+          discountReason: 'Cruce por dos cuajadas malas',
         }),
     ).expect(200);
     expect(corregido.body.number).toBe(1);
-    expect(corregido.body.total).toBe('54400');
+    expect(corregido.body.subtotal).toBe('54400');
+    expect(corregido.body.discount).toBe('4400');
+    expect(corregido.body.discountReason).toBe('Cruce por dos cuajadas malas');
+    expect(corregido.body.total).toBe('50000');
     expect(corregido.body.items).toHaveLength(1);
+
+    const deMas = await como(
+      http()
+        .put(`/api/v1/purchase-orders/${pedidoId}`)
+        .send({
+          date: '2026-09-07',
+          items: [{ productId: cuajadas, quantity: 8, unitPrice: 6800 }],
+          discount: 60000,
+        }),
+    ).expect(400);
+    expect(deMas.body.message).toMatch(/descuento/i);
 
     const pdf = await como(
       http()
@@ -192,9 +210,6 @@ describe('Pedidos a proveedor (e2e)', () => {
     expect(editar.body.message).toMatch(/ya llegó/i);
     const borrar = await como(http().delete(`/api/v1/purchase-orders/${pedido.body.id}`)).expect(400);
     expect(borrar.body.message).toMatch(/ya llegó/i);
-    const reabrir = await como(http().patch(`/api/v1/purchase-orders/${pedido.body.id}/reopen`)).expect(400);
-    expect(reabrir.body.message).toMatch(/borra esa compra/i);
-
     // La misma compra no puede "llegar" dos veces.
     const repetido = await como(
       http()
@@ -203,19 +218,17 @@ describe('Pedidos a proveedor (e2e)', () => {
     ).expect(400);
     expect(repetido.body.message).toMatch(/ya está marcado/i);
 
+    // La única forma de que llegue es con su compra; sin ella, no hay "llegó" a mano.
+    await como(http().patch(`/api/v1/purchase-orders/${pedido.body.id}/receive`)).expect(404);
+    const pendientes = await como(http().get('/api/v1/purchase-orders?status=PENDING')).expect(200);
+    expect(pendientes.body.data.map((p: { id: string }) => p.id)).not.toContain(pedido.body.id);
+
+    // Borrar la compra lo devuelve solo a pendiente.
     await como(http().delete(`/api/v1/purchases/${compra.body.id}`)).expect(200);
     const reabierto = await como(http().get(`/api/v1/purchase-orders/${pedido.body.id}`)).expect(200);
     expect(reabierto.body.status).toBe('PENDING');
     expect(reabierto.body.purchase).toBeNull();
-
-    // Marcar a mano y volver a pendiente, sin compra de por medio.
-    const aMano = await como(
-      http().patch(`/api/v1/purchase-orders/${pedido.body.id}/receive`).send({ date: '2026-09-13' }),
-    ).expect(200);
-    expect(aMano.body.status).toBe('RECEIVED');
-    const pendientes = await como(http().get('/api/v1/purchase-orders?status=PENDING')).expect(200);
-    expect(pendientes.body.data.map((p: { id: string }) => p.id)).not.toContain(pedido.body.id);
-    const vuelto = await como(http().patch(`/api/v1/purchase-orders/${pedido.body.id}/reopen`)).expect(200);
-    expect(vuelto.body.status).toBe('PENDING');
+    const yaPendiente = await como(http().get('/api/v1/purchase-orders?status=PENDING')).expect(200);
+    expect(yaPendiente.body.data.map((p: { id: string }) => p.id)).toContain(pedido.body.id);
   });
 });

@@ -117,7 +117,7 @@ export class PdfRenderer {
       // De donde sale la utilidad, en el orden de siempre.
       { text: 'Resultado del periodo', style: 'seccion' },
       this.tablaSimple(
-        ['Concepto', 'Importe'],
+        ['Concepto', 'Valor'],
         [
           ['Ventas', dinero(data.kpis.sales)],
           ['Costo de la mercancía vendida', `- ${dinero(data.kpis.cogs)}`],
@@ -157,7 +157,7 @@ export class PdfRenderer {
 
       { text: 'Situación a día de hoy', style: 'seccion' },
       this.tablaSimple(
-        ['Concepto', 'Importe'],
+        ['Concepto', 'Valor'],
         [
           ['Mercancía en inventario (al costo)', dinero(data.position.inventoryValue)],
           ['Deuda con proveedores', dinero(data.position.supplierDebt)],
@@ -309,7 +309,7 @@ export class PdfRenderer {
       contenido.push(
         { text: 'Detalle de gastos', style: 'seccion' },
         this.tablaSimple(
-          ['Fecha', 'Descripción', 'Categoría', 'Forma de pago', 'Importe'],
+          ['Fecha', 'Descripción', 'Categoría', 'Forma de pago', 'Valor'],
           data.expenses.map((gasto) => [
             formatDate(gasto.date),
             gasto.description,
@@ -425,7 +425,7 @@ export class PdfRenderer {
 
       { text: 'Abonos del periodo', style: 'seccion' },
       this.tablaSimple(
-        ['Fecha', 'A qué se abonó', 'Forma de pago', 'Importe'],
+        ['Fecha', 'A qué se abonó', 'Forma de pago', 'Valor'],
         data.payments.map((abono) => [
           formatDate(abono.date),
           abono.notes ? `${abono.purchase} (${abono.notes})` : abono.purchase,
@@ -543,8 +543,37 @@ export class PdfRenderer {
           {
             width: 'auto',
             table: {
-              widths: ['auto', 120],
+              // Ancho fijo para que "Descuento (motivo)" no se parta en dos lineas.
+              widths: [pedido.discount.isZero() ? 'auto' : 230, 120],
               body: [
+                // Con descuento, el proveedor tiene que ver de donde sale lo
+                // que se le paga: suma, lo que resta y el total.
+                ...(pedido.discount.isZero()
+                  ? []
+                  : ([
+                      [
+                        { text: 'Suma', color: GRIS, margin: [8, 6, 8, 2] },
+                        {
+                          text: dinero(pedido.subtotal.toString()),
+                          alignment: 'right',
+                          margin: [8, 6, 8, 2],
+                        },
+                      ],
+                      [
+                        {
+                          text: pedido.discountReason
+                            ? `Descuento (${pedido.discountReason})`
+                            : 'Descuento',
+                          color: GRIS,
+                          margin: [8, 2, 8, 4],
+                        },
+                        {
+                          text: `- ${dinero(pedido.discount.toString())}`,
+                          alignment: 'right',
+                          margin: [8, 2, 8, 4],
+                        },
+                      ],
+                    ] as TableCell[][])),
                 [
                   { text: 'TOTAL', bold: true, fontSize: 12, margin: [8, 6, 8, 6] },
                   {

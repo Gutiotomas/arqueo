@@ -228,7 +228,7 @@ export class ExcelRenderer {
       { header: 'Descripción', key: 'description', width: 40 },
       { header: 'Categoría', key: 'category', width: 20 },
       { header: 'Forma de pago', key: 'paymentMethod', width: 16 },
-      { header: 'Importe', key: 'amount', width: 16 },
+      { header: 'Valor', key: 'amount', width: 16 },
     ];
     this.estiloCabecera(hoja);
 
@@ -335,7 +335,7 @@ export class ExcelRenderer {
       { header: 'Fecha', key: 'date', width: 12 },
       { header: 'A qué se abonó', key: 'purchase', width: 34 },
       { header: 'Forma de pago', key: 'paymentMethod', width: 16 },
-      { header: 'Importe', key: 'amount', width: 15 },
+      { header: 'Valor', key: 'amount', width: 15 },
       { header: 'Notas', key: 'notes', width: 30 },
     ];
     this.estiloCabecera(abonos);

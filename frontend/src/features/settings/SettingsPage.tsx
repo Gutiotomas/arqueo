@@ -66,7 +66,7 @@ export function SettingsPage() {
                 Datos del negocio
               </span>
             }
-            description="Se usan en los informes y al mostrar los importes"
+            description="Se usan en los informes y al mostrar los valores"
           />
           {negocio.isLoading ? (
             <Loading rows={3} />
@@ -208,7 +208,7 @@ function FormularioNegocio({
         </Field>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Moneda" hint="Con la que se muestran todos los importes">
+          <Field label="Moneda" hint="Con la que se muestran todos los valores">
             <Select
               value={moneda}
               onChange={(e) => {

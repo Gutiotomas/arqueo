@@ -44,7 +44,7 @@ export function PartesDePago({
       {partes.map((parte) => (
         <div key={parte.key} className="flex items-center gap-2">
           <MoneyInput
-            aria-label="Importe de la parte"
+            aria-label="Valor de la parte"
             className="min-w-0 flex-1"
             value={parte.amount}
             onValueChange={(valor) => cambiar(parte.key, { amount: valor })}

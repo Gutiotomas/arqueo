@@ -72,6 +72,22 @@ export class CreatePurchaseOrderDto {
   @Type(() => PurchaseOrderItemDto)
   items!: PurchaseOrderItemDto[];
 
+  @ApiPropertyOptional({
+    example: 15000,
+    description: 'Lo que el proveedor resta del total. No puede superar la suma de las lineas.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  discount?: number;
+
+  @ApiPropertyOptional({ example: 'Cruce por las gaseosas vencidas' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  discountReason?: string;
+
   @ApiPropertyOptional({ example: 'Para el lunes' })
   @IsOptional()
   @IsString()
@@ -101,9 +117,3 @@ export class PurchaseOrderQueryDto extends PaginationQueryDto {
   status?: 'PENDING' | 'RECEIVED';
 }
 
-export class ReceiveOrderDto {
-  @ApiPropertyOptional({ example: '2026-09-29', description: 'Por defecto, hoy' })
-  @IsOptional()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date debe tener formato YYYY-MM-DD' })
-  date?: string;
-}

@@ -246,7 +246,7 @@ export function ExpensesPage() {
                       <Th>Descripción</Th>
                       <Th>Categoría</Th>
                       <Th>Pago</Th>
-                      <Th align="right">Importe</Th>
+                      <Th align="right">Valor</Th>
                       <Th align="right" />
                     </tr>
                   </thead>

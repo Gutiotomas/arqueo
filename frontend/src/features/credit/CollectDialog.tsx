@@ -109,7 +109,7 @@ export function CollectDialog({
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Cuánto paga">
-            <MoneyInput aria-label="Importe del cobro" value={importe} onValueChange={setImporte} />
+            <MoneyInput aria-label="Valor del cobro" value={importe} onValueChange={setImporte} />
           </Field>
           <Field label="Fecha del cobro">
             <Input

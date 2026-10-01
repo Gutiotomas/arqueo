@@ -298,7 +298,7 @@ export function CreditPage() {
         open={!!aBorrar}
         onOpenChange={(abierto) => !abierto && setABorrar(null)}
         title="Borrar este cobro"
-        message="El importe volverá a quedar como deuda del cliente. Si fue en efectivo, también cambiará el cierre de caja de ese día."
+        message="El dinero volverá a quedar como deuda del cliente. Si fue en efectivo, también cambiará el cierre de caja de ese día."
         loading={borrarCobro.isPending}
         onConfirm={confirmarBorrado}
       />

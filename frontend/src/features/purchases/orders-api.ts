@@ -17,6 +17,8 @@ export interface OrderPayload {
   supplierId?: string;
   supplierName?: string;
   notes?: string;
+  discount?: number;
+  discountReason?: string;
   items: { productId?: string; description?: string; quantity: number; unitPrice: number }[];
 }
 
@@ -49,23 +51,6 @@ export function useUpdateOrder() {
   return useMutation({
     mutationFn: ({ id, datos }: { id: string; datos: OrderPayload }) =>
       api.put<PurchaseOrder>(`/purchase-orders/${id}`, datos),
-    onSuccess: invalidar,
-  });
-}
-
-/** Marcar a mano que llegó, sin registrar la compra desde el pedido. */
-export function useReceiveOrder() {
-  const invalidar = useInvalidarPedidos();
-  return useMutation({
-    mutationFn: (id: string) => api.patch<PurchaseOrder>(`/purchase-orders/${id}/receive`, {}),
-    onSuccess: invalidar,
-  });
-}
-
-export function useReopenOrder() {
-  const invalidar = useInvalidarPedidos();
-  return useMutation({
-    mutationFn: (id: string) => api.patch<PurchaseOrder>(`/purchase-orders/${id}/reopen`, {}),
     onSuccess: invalidar,
   });
 }

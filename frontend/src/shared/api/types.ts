@@ -463,6 +463,12 @@ export interface PurchaseOrder {
   id: string;
   number: number;
   date: string;
+  /** Suma de las líneas antes del descuento. */
+  subtotal: string;
+  /** Lo que el proveedor resta; va en el PDF, que es la cuenta que se le manda. */
+  discount: string;
+  discountReason: string | null;
+  /** subtotal − discount. */
   total: string;
   notes: string | null;
   /** Pendiente de llegada o ya llegó. Un pedido que llegó no se edita. */

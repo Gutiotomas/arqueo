@@ -69,7 +69,7 @@ export function ExpenseFormDialog({
       return;
     }
     if (Number(importe || 0) <= 0) {
-      setError('El importe debe ser mayor que cero');
+      setError('El pago debe ser mayor que cero');
       return;
     }
 
@@ -126,9 +126,9 @@ export function ExpenseFormDialog({
               onChange={(e) => setFecha(e.target.value)}
             />
           </Field>
-          <Field label="Importe">
+          <Field label="Pago">
             <MoneyInput
-              aria-label="Importe"
+              aria-label="Pago"
               value={importe}
               onValueChange={setImporte}
             />

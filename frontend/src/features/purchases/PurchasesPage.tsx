@@ -683,7 +683,7 @@ export function PurchasesPage() {
         }
         message={
           aBorrar?.tipo === 'abono'
-            ? 'El importe volverá a quedar como deuda con el proveedor. Si lo pagaste en efectivo, también cambiará el cierre de caja de ese día.'
+            ? 'El dinero volverá a quedar como deuda con el proveedor. Si lo pagaste en efectivo, también cambiará el cierre de caja de ese día.'
             : aBorrar?.compra.isOpeningBalance
               ? 'Se borrará la deuda y sus abonos. Si algún abono fue en efectivo, también cambiará el cierre de caja de ese día.'
               : 'Se retirará del inventario la mercancía que entró, el costo de esos productos volverá a como estaba antes de la compra y se borrarán sus abonos. Solo se puede si todavía no has vendido nada de esa compra.'

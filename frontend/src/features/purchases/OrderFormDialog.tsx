@@ -58,6 +58,8 @@ export function OrderFormDialog({
   const [proveedorId, setProveedorId] = useState('');
   const [proveedorNuevo, setProveedorNuevo] = useState('');
   const [notas, setNotas] = useState('');
+  const [descuento, setDescuento] = useState<number | ''>('');
+  const [motivoDescuento, setMotivoDescuento] = useState('');
   const [lineas, setLineas] = useState<Linea[]>([lineaVacia()]);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,6 +94,8 @@ export function OrderFormDialog({
       setProveedorId(pedido.supplier?.id ?? '');
       setProveedorNuevo('');
       setNotas(pedido.notes ?? '');
+      setDescuento(toNumber(pedido.discount) > 0 ? toNumber(pedido.discount) : '');
+      setMotivoDescuento(pedido.discountReason ?? '');
       setLineas(
         pedido.items.map((item) => ({
           key: item.id,
@@ -106,6 +110,8 @@ export function OrderFormDialog({
       setProveedorId('');
       setProveedorNuevo('');
       setNotas('');
+      setDescuento('');
+      setMotivoDescuento('');
       setLineas([lineaVacia()]);
     }
   }, [open, pedido]);
@@ -127,7 +133,8 @@ export function OrderFormDialog({
   }
 
   const subtotal = (linea: Linea) => Number(linea.quantity || 0) * Number(linea.unitPrice || 0);
-  const total = lineas.reduce((suma, linea) => suma + subtotal(linea), 0);
+  const suma = lineas.reduce((acumulado, linea) => acumulado + subtotal(linea), 0);
+  const total = suma - Number(descuento || 0);
 
   async function guardar() {
     setError(null);
@@ -161,6 +168,10 @@ export function OrderFormDialog({
       setError('Escribe el nombre del proveedor nuevo');
       return;
     }
+    if (Number(descuento || 0) > suma) {
+      setError('El descuento no puede ser mayor que la suma de los productos');
+      return;
+    }
 
     const datos: OrderPayload = {
       date: fecha,
@@ -170,6 +181,12 @@ export function OrderFormDialog({
           ? { supplierId: proveedorId }
           : {}),
       ...(notas.trim() ? { notes: notas.trim() } : {}),
+      ...(Number(descuento || 0) > 0
+        ? {
+            discount: Number(descuento),
+            ...(motivoDescuento.trim() ? { discountReason: motivoDescuento.trim() } : {}),
+          }
+        : {}),
       items,
     };
 
@@ -350,6 +367,30 @@ export function OrderFormDialog({
           </div>
         </div>
 
+        {/* La cuenta que se le manda al proveedor: si hay cruce o promoción, va aquí. */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Descuento del proveedor (opcional)"
+            hint="Lo que te resta del total. Sale en el PDF y pasa a la compra."
+          >
+            <MoneyInput
+              aria-label="Descuento"
+              value={descuento}
+              onValueChange={setDescuento}
+            />
+          </Field>
+          {Number(descuento || 0) > 0 && (
+            <Field label="Por qué te lo descuenta">
+              <Input
+                maxLength={200}
+                placeholder="Cruce por las gaseosas vencidas..."
+                value={motivoDescuento}
+                onChange={(e) => setMotivoDescuento(e.target.value)}
+              />
+            </Field>
+          )}
+        </div>
+
         <Field label="Notas (opcional)">
           <Textarea
             rows={2}
@@ -364,9 +405,23 @@ export function OrderFormDialog({
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         )}
 
-        <div className="flex items-center justify-between rounded-lg bg-slate-900 px-4 py-3 text-white">
-          <span className="text-sm">Total del pedido</span>
-          <span className="tabular text-xl font-bold">{formatMoney(total, currency)}</span>
+        <div className="rounded-lg bg-slate-900 px-4 py-3 text-white">
+          {Number(descuento || 0) > 0 && (
+            <div className="mb-2 space-y-1 border-b border-white/15 pb-2 text-sm text-slate-300">
+              <div className="flex justify-between">
+                <span>Suma de los productos</span>
+                <span className="tabular">{formatMoney(suma, currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Descuento</span>
+                <span className="tabular">− {formatMoney(Number(descuento), currency)}</span>
+              </div>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-sm">Total del pedido</span>
+            <span className="tabular text-xl font-bold">{formatMoney(total, currency)}</span>
+          </div>
         </div>
       </div>
     </Dialog>

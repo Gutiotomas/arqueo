@@ -3,7 +3,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
 import { paginated } from '../../common/dto/pagination.dto';
-import { parseBusinessDate, todayInTimezone } from '../../common/utils/dates';
+import { parseBusinessDate } from '../../common/utils/dates';
 import { fileDate } from '../../common/utils/format';
 import { money, quantity, sumDecimals } from '../../common/utils/money';
 import {
@@ -77,6 +77,7 @@ export class PurchaseOrdersService {
   async create(businessId: string, userId: string, dto: CreatePurchaseOrderDto) {
     const lineas = await this.prepararLineas(businessId, dto.items);
     const supplierId = await this.resolverProveedor(businessId, dto);
+    const totales = this.totales(lineas, dto);
 
     return this.prisma.$transaction(async (tx) => {
       // Numero correlativo por negocio, como el talonario.
@@ -92,7 +93,7 @@ export class PurchaseOrdersService {
           supplierId,
           number: (ultimo._max.number ?? 0) + 1,
           date: parseBusinessDate(dto.date),
-          total: sumDecimals(lineas.map((linea) => linea.subtotal)),
+          ...totales,
           notes: dto.notes?.trim() || null,
           items: { createMany: { data: lineas } },
         },
@@ -110,6 +111,7 @@ export class PurchaseOrdersService {
     this.soloPendiente(await this.findOne(businessId, id), 'editar');
     const lineas = await this.prepararLineas(businessId, dto.items);
     const supplierId = await this.resolverProveedor(businessId, dto);
+    const totales = this.totales(lineas, dto);
 
     return this.prisma.$transaction(async (tx) => {
       await tx.purchaseOrderItem.deleteMany({ where: { orderId: id } });
@@ -118,7 +120,7 @@ export class PurchaseOrdersService {
         data: {
           supplierId,
           date: parseBusinessDate(dto.date),
-          total: sumDecimals(lineas.map((linea) => linea.subtotal)),
+          ...totales,
           notes: dto.notes?.trim() || null,
           items: { createMany: { data: lineas } },
         },
@@ -138,47 +140,38 @@ export class PurchaseOrdersService {
   }
 
   /**
-   * Marcar a mano que llego, sin registrar la compra desde aqui (por ejemplo
-   * si la compra ya se apunto aparte).
+   * Un pedido llega cuando se registra su compra (POST /purchases con orderId):
+   * ahi se dice si se pago o no. Si esa compra se borra, el pedido vuelve a
+   * pendiente solo. No hay "marcar llegado" a mano: seria una llegada sin
+   * mercancia ni deuda apuntadas.
    */
-  async receive(businessId: string, id: string, date?: string) {
-    const pedido = this.soloPendiente(await this.findOne(businessId, id), 'marcar');
-    const negocio = await this.prisma.business.findUniqueOrThrow({
-      where: { id: businessId },
-      select: { timezone: true },
-    });
-    await this.prisma.purchaseOrder.update({
-      where: { id: pedido.id },
-      data: {
-        status: 'RECEIVED',
-        receivedAt: parseBusinessDate(date ?? todayInTimezone(negocio.timezone)),
-      },
-    });
-    return this.findOne(businessId, id);
-  }
-
-  /** Vuelve a pendiente. Si llego con una compra, primero hay que borrar la compra. */
-  async reopen(businessId: string, id: string) {
-    const pedido = await this.findOne(businessId, id);
-    if (pedido.purchaseId) {
-      throw new BadRequestException(
-        'Este pedido llegó con una compra registrada: para volverlo a pendiente, borra esa compra',
-      );
-    }
-    await this.prisma.purchaseOrder.update({
-      where: { id },
-      data: { status: 'PENDING', receivedAt: null },
-    });
-    return this.findOne(businessId, id);
-  }
-
   private soloPendiente(pedido: PurchaseOrderData, accion: string) {
     if (pedido.status === 'RECEIVED') {
       throw new BadRequestException(
-        `El pedido No. ${pedido.number} ya llegó: no se puede ${accion}. Si fue un error, vuélvelo a pendiente.`,
+        `El pedido No. ${pedido.number} ya llegó: no se puede ${accion}. Si fue un error, borra la compra con la que llegó.`,
       );
     }
     return pedido;
+  }
+
+  /** Subtotal de las lineas, descuento del proveedor y total = subtotal - descuento. */
+  private totales(
+    lineas: { subtotal: Prisma.Decimal }[],
+    dto: { discount?: number; discountReason?: string },
+  ) {
+    const subtotal = sumDecimals(lineas.map((linea) => linea.subtotal));
+    const discount = money(dto.discount ?? 0);
+    if (discount.greaterThan(subtotal)) {
+      throw new BadRequestException(
+        'El descuento no puede ser mayor que la suma de las líneas del pedido',
+      );
+    }
+    return {
+      subtotal,
+      discount,
+      discountReason: discount.isZero() ? null : dto.discountReason?.trim() || null,
+      total: money(subtotal.minus(discount)),
+    };
   }
 
   /** arqueo-pedido-12-07-09-2026.pdf */

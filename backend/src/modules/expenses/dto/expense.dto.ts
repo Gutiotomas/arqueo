@@ -29,7 +29,7 @@ export class CreateExpenseDto {
   @ApiProperty({ example: 1500000 })
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0.01, { message: 'El importe debe ser mayor que cero' })
+  @Min(0.01, { message: 'El pago debe ser mayor que cero' })
   amount!: number;
 
   @ApiProperty({ enum: PaymentMethod, example: PaymentMethod.TRANSFER })

@@ -5,7 +5,6 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
-  Patch,
   Post,
   Put,
   Query,
@@ -22,7 +21,6 @@ import { PdfRenderer } from '../reports/renderers/pdf.renderer';
 import {
   CreatePurchaseOrderDto,
   PurchaseOrderQueryDto,
-  ReceiveOrderDto,
 } from './dto/purchase-order.dto';
 import { PurchaseOrdersService } from './purchase-orders.service';
 
@@ -79,24 +77,6 @@ export class PurchaseOrdersController {
     return this.pedidos.create(user.businessId, user.userId, dto);
   }
 
-  @Patch(':id/receive')
-  @ApiOperation({ summary: 'Marca el pedido como llegado (sin registrar compra)' })
-  receive(
-    @CurrentUser('businessId') businessId: string,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: ReceiveOrderDto,
-  ) {
-    return this.pedidos.receive(businessId, id, dto.date);
-  }
-
-  @Patch(':id/reopen')
-  @ApiOperation({ summary: 'Devuelve el pedido a pendiente de llegada' })
-  reopen(
-    @CurrentUser('businessId') businessId: string,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
-    return this.pedidos.reopen(businessId, id);
-  }
 
   @Put(':id')
   @ApiOperation({ summary: 'Reemplaza el pedido entero; conserva su número (solo si está pendiente)' })

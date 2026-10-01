@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, FileDown, PackageCheck, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileDown, PackageCheck, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Fragment, useState } from 'react';
 
 import { useSuppliers } from './api';
@@ -7,8 +7,6 @@ import {
   downloadOrderPdf,
   useDeleteOrder,
   useOrders,
-  useReceiveOrder,
-  useReopenOrder,
   type OrderFilters,
 } from './orders-api';
 import { PESTANAS_COMPRAS } from './pestanas';
@@ -56,6 +54,22 @@ function DetallePedido({ pedido }: { pedido: PurchaseOrder }) {
           </li>
         ))}
       </ul>
+      {toNumber(pedido.discount) > 0 && (
+        <div className="mt-2 space-y-0.5 border-t border-slate-200 pt-2 text-sm">
+          <p className="flex justify-between text-slate-500">
+            <span>Suma</span>
+            <span className="tabular">{formatMoney(pedido.subtotal, currency)}</span>
+          </p>
+          <p className="flex justify-between text-slate-500">
+            <span>Descuento{pedido.discountReason ? ` (${pedido.discountReason})` : ''}</span>
+            <span className="tabular">− {formatMoney(pedido.discount, currency)}</span>
+          </p>
+          <p className="flex justify-between font-medium text-slate-900">
+            <span>Total</span>
+            <span className="tabular">{formatMoney(pedido.total, currency)}</span>
+          </p>
+        </div>
+      )}
       {pedido.notes && (
         <p className="mt-2 border-t border-slate-200 pt-2 text-xs text-slate-500">{pedido.notes}</p>
       )}
@@ -90,8 +104,6 @@ export function OrdersPage() {
   const pedidos = useOrders(filtros);
   const proveedores = useSuppliers();
   const borrar = useDeleteOrder();
-  const marcarLlegado = useReceiveOrder();
-  const reabrir = useReopenOrder();
 
   function cambiarFiltros(cambios: Partial<OrderFilters>) {
     setFiltros((previos) => ({ ...previos, ...cambios, page: cambios.page ?? 1 }));
@@ -115,8 +127,12 @@ export function OrdersPage() {
     const sueltas = pedido.items.length - conProducto.length;
     setCompra({
       orderId: pedido.id,
+      orderNumber: pedido.number,
       supplierId: pedido.supplier?.id,
       notes: `Pedido No. ${pedido.number}${sueltas > 0 ? ` (${sueltas} línea${sueltas === 1 ? '' : 's'} sin producto en inventario no pasaron)` : ''}`,
+      ...(toNumber(pedido.discount) > 0
+        ? { discount: toNumber(pedido.discount), discountReason: pedido.discountReason ?? undefined }
+        : {}),
       items: conProducto.map((item) => ({
         productId: item.productId!,
         quantity: toNumber(item.quantity),
@@ -125,61 +141,36 @@ export function OrdersPage() {
     });
   }
 
-  async function ejecutar(accion: () => Promise<unknown>) {
-    setErrorAccion(null);
-    try {
-      await accion();
-    } catch (fallo) {
-      setErrorAccion(fallo instanceof ApiError ? fallo.detalle : 'No se pudo cambiar el pedido');
-    }
-  }
 
-  /** Un pedido que llegó solo se puede ver y descargar; el resto, al pendiente. */
+  /**
+   * Un pedido llega de una sola forma: registrando la compra, donde se dice
+   * si se pagó o no. Un pedido que llegó solo se puede ver y descargar.
+   */
   function acciones(pedido: PurchaseOrder) {
     const llego = pedido.status === 'RECEIVED';
     return (
       <>
+        {!llego && (
+          <Button
+            variant="secondary"
+            size="sm"
+            title="Registrar la compra con lo que llegó y decir si la pagaste"
+            onClick={() => registrarComoCompra(pedido)}
+          >
+            <PackageCheck className="h-4 w-4" />
+            Ya llegó
+          </Button>
+        )}
         <Button
-          variant="secondary"
-          size="sm"
+          variant="ghost"
+          size="icon"
+          aria-label="Descargar PDF"
+          title="PDF para mandarle al proveedor"
           onClick={() => descargar(pedido)}
           disabled={descargando === pedido.id}
         >
           <FileDown className="h-4 w-4" />
-          {descargando === pedido.id ? 'Generando...' : 'PDF'}
         </Button>
-        {!llego && (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Registrar como compra"
-            title="Ya llegó: registrar como compra"
-            onClick={() => registrarComoCompra(pedido)}
-          >
-            <PackageCheck className="h-4 w-4" />
-          </Button>
-        )}
-        {!llego && (
-          <Button
-            variant="ghost"
-            size="sm"
-            title="Ya llegó, pero la compra se apuntó aparte (o no hace falta)"
-            onClick={() => ejecutar(() => marcarLlegado.mutateAsync(pedido.id))}
-          >
-            Marcar llegado
-          </Button>
-        )}
-        {llego && !pedido.purchaseId && (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Volver a pendiente"
-            title="Volver a pendiente de llegada"
-            onClick={() => ejecutar(() => reabrir.mutateAsync(pedido.id))}
-          >
-            <RotateCcw className="h-4 w-4" />
-          </Button>
-        )}
         <Button
           variant="ghost"
           size="icon"

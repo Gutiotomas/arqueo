@@ -414,6 +414,13 @@ model PurchaseOrder {
   /// Numero correlativo por negocio: Pedido No. 12.
   number     Int
   date       DateTime            @db.Date
+  /// Suma de las lineas, antes del descuento.
+  subtotal       Decimal @default(0) @db.Decimal(14, 2)
+  /// Lo que el proveedor resta (un cruce, una promocion). El PDF es la cuenta
+  /// que se le manda, asi que el descuento tiene que verse ahi.
+  discount       Decimal @default(0) @db.Decimal(14, 2)
+  discountReason String? @map("discount_reason")
+  /// subtotal - discount: lo que se le pagara al proveedor.
   total      Decimal             @db.Decimal(14, 2)
   notes      String?
   /// Pendiente de llegada o ya llegado. Un pedido que llego no se edita.

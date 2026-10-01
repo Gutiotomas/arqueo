@@ -50,8 +50,12 @@ function lineaVacia(): Linea {
 export interface CompraInicial {
   /** El pedido del que viene: al guardar pasa a "llegó". */
   orderId?: string;
+  orderNumber?: number;
   supplierId?: string;
   notes?: string;
+  /** El descuento que ya venía en el pedido. */
+  discount?: number;
+  discountReason?: string;
   items: { productId: string; quantity: number; unitCost: number }[];
 }
 
@@ -116,8 +120,8 @@ export function PurchaseFormDialog({
           }))
         : [lineaVacia()],
     );
-    setDescuento('');
-    setMotivoDescuento('');
+    setDescuento(inicial?.discount ? inicial.discount : '');
+    setMotivoDescuento(inicial?.discountReason ?? '');
     setComoPago('nada');
     setPartesPago([partePago()]);
     setError(null);
@@ -233,8 +237,12 @@ export function PurchaseFormDialog({
       open={open}
       onOpenChange={onOpenChange}
       size="lg"
-      title="Nueva compra"
-      description="Lo que compras entra al inventario: todavía no es un gasto."
+      title={inicial?.orderId ? `Llegó el pedido No. ${inicial.orderNumber ?? ''}`.trim() : 'Nueva compra'}
+      description={
+        inicial?.orderId
+          ? 'Lo que llegó entra al inventario y aquí dices si lo pagaste.'
+          : 'Lo que compras entra al inventario: todavía no es un gasto.'
+      }
       footer={
         <>
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
@@ -248,9 +256,19 @@ export function PurchaseFormDialog({
     >
       <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Fecha de la compra">
+          {/* Desde un pedido, esta fecha es la de llegada: si llegó antes y
+              se apunta hoy, hay que ponerle el día de verdad. */}
+          <Field
+            label={inicial?.orderId ? '¿Qué día llegó?' : 'Fecha de la compra'}
+            hint={
+              inicial?.orderId
+                ? 'Si llegó antes y lo apuntas hoy, pon ese día: queda como fecha de la compra.'
+                : undefined
+            }
+          >
             <Input
               type="date"
+              aria-label="Fecha de la compra"
               value={fecha}
               max={today()}
               onChange={(e) => setFecha(e.target.value)}

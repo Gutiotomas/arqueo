@@ -35,7 +35,7 @@ async function bootstrap(): Promise<void> {
   const swagger = new DocumentBuilder()
     .setTitle('Arqueo API')
     .setDescription(
-      'Ventas, gastos e inventario para pequeños negocios. Los importes viajan como string para no perder precision.',
+      'Ventas, gastos e inventario para pequeños negocios. Las cifras de dinero viajan como string para no perder precision.',
     )
     .setVersion('1.0')
     .addBearerAuth()

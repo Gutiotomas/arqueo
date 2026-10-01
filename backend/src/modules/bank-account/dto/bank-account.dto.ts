@@ -62,7 +62,7 @@ export class CreateAccountMovementDto {
   @ApiProperty({ example: 300000 })
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0.01, { message: 'El importe debe ser mayor que cero' })
+  @Min(0.01, { message: 'El valor debe ser mayor que cero' })
   amount!: number;
 
   @ApiPropertyOptional({ example: 'Consignación en Bancolombia' })

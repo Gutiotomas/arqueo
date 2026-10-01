@@ -43,7 +43,7 @@ export function AccountMovementDialog({
     setError(null);
 
     if (Number(monto || 0) <= 0) {
-      setError('Escribe el importe');
+      setError('Escribe el valor');
       return;
     }
 
@@ -100,8 +100,8 @@ export function AccountMovementDialog({
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Importe">
-            <MoneyInput aria-label="Importe" value={monto} onValueChange={setMonto} />
+          <Field label="Valor">
+            <MoneyInput aria-label="Valor" value={monto} onValueChange={setMonto} />
           </Field>
           <Field label="Fecha">
             <Input
