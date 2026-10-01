@@ -23,6 +23,15 @@ export class CreateAccountClosingDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   closingBalance!: number;
 
+  @ApiPropertyOptional({
+    example: 1200000,
+    description: 'Saldo con el que arranca el tramo. Si no se manda, el del cierre anterior.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  openingBalance?: number;
+
   @ApiPropertyOptional({ example: 'El banco cobró la cuota de manejo' })
   @IsOptional()
   @IsString()
@@ -37,6 +46,12 @@ export class UpdateAccountClosingDto {
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   closingBalance?: number;
+
+  @ApiPropertyOptional({ example: 1200000, description: 'Saldo con el que arranca el tramo' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  openingBalance?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

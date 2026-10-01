@@ -33,7 +33,7 @@ import { useAuth } from '@/features/auth/auth-context';
 import { ApiError } from '@/shared/api/client';
 import type { AccountClosing, AccountMovement } from '@/shared/api/types';
 import { cn } from '@/shared/lib/cn';
-import { addDays, formatDate, formatLongDate, today } from '@/shared/lib/dates';
+import { addDays, formatDate, today } from '@/shared/lib/dates';
 import { formatMoney, toNumber } from '@/shared/lib/money';
 import { Button } from '@/shared/ui/button';
 import { Card, CardBody, CardHeader } from '@/shared/ui/card';
@@ -53,6 +53,8 @@ export function AccountPage() {
 
   const [fecha, setFecha] = useState(today());
   const [saldoBanco, setSaldoBanco] = useState<number | ''>('');
+  // Con qué saldo arranca el tramo. Vacío = el del cierre anterior (lo normal).
+  const [saldoInicial, setSaldoInicial] = useState<number | ''>('');
   const [notas, setNotas] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [guardado, setGuardado] = useState(false);
@@ -64,7 +66,7 @@ export function AccountPage() {
   >(null);
 
   const resumen = useAccountSummary();
-  const preview = useAccountPreview(fecha);
+  const preview = useAccountPreview(fecha, saldoInicial);
   const idExistente = preview.data?.existingClosingId ?? null;
   const existente = useAccountClosing(idExistente);
 
@@ -84,6 +86,7 @@ export function AccountPage() {
     if (!nueva) return;
     setFecha(nueva);
     setSaldoBanco('');
+    setSaldoInicial('');
     setNotas('');
     setError(null);
     setGuardado(false);
@@ -98,6 +101,7 @@ export function AccountPage() {
 
     rellenadoPara.current = fecha;
     setSaldoBanco(toNumber(cierre.closingBalance));
+    setSaldoInicial(cierre.openingBalance === null ? '' : toNumber(cierre.openingBalance));
     setNotas(cierre.notes ?? '');
   }, [existente.data, fecha]);
 
@@ -123,12 +127,17 @@ export function AccountPage() {
       if (idExistente) {
         await actualizar.mutateAsync({
           id: idExistente,
-          datos: { closingBalance: toNumber(saldoBanco), notes: notas.trim() },
+          datos: {
+            closingBalance: toNumber(saldoBanco),
+            ...(saldoInicial === '' ? {} : { openingBalance: toNumber(saldoInicial) }),
+            notes: notas.trim(),
+          },
         });
       } else {
         await crear.mutateAsync({
           date: fecha,
           closingBalance: toNumber(saldoBanco),
+          ...(saldoInicial === '' ? {} : { openingBalance: toNumber(saldoInicial) }),
           notes: notas.trim(),
         });
       }
@@ -207,6 +216,12 @@ export function AccountPage() {
                   datos={datos}
                   currency={currency}
                   cargando={preview.isFetching}
+                  saldoInicial={saldoInicial}
+                  onSaldoInicial={(valor) => {
+                    setSaldoInicial(valor);
+                    setGuardado(false);
+                  }}
+                  bloqueado={bloqueado}
                 />
               )}
             </CardBody>
@@ -630,13 +645,22 @@ function DesgloseCuenta({
   datos,
   currency,
   cargando,
+  saldoInicial,
+  onSaldoInicial,
+  bloqueado,
 }: {
   datos: NonNullable<ReturnType<typeof useAccountPreview>['data']>;
   currency: string;
   cargando: boolean;
+  /** Vacío = el saldo del cierre anterior; un número lo sustituye. */
+  saldoInicial: number | '';
+  onSaldoInicial: (valor: number | '') => void;
+  bloqueado: boolean;
 }) {
   const m = datos.movements;
   if (!m || !datos.previousClosing) return null;
+  const delCierre = toNumber(datos.previousClosing.closingBalance);
+  const cambiado = saldoInicial !== '' && toNumber(saldoInicial) !== delCierre;
 
   const tarjetaNeta = toNumber(m.cardSales) - toNumber(m.cardFees);
   const lineas = [
@@ -700,13 +724,42 @@ function DesgloseCuenta({
 
   return (
     <div className={cn('space-y-2 transition-opacity', cargando && 'opacity-60')}>
-      <LineaDesglose
-        icono={<Flag className="h-4 w-4" />}
-        tono="neutral"
-        etiqueta="Saldo del cierre anterior"
-        detalle={formatLongDate(datos.previousClosing.date)}
-        valor={formatMoney(datos.previousClosing.closingBalance, currency)}
-      />
+      {/* Con qué saldo arranca el tramo: viene solo del cierre anterior, pero
+          se puede cambiar a mano (si aquel cierre quedó mal, por ejemplo). */}
+      <div className="rounded-lg border border-slate-200 px-3 py-2.5">
+        {/* En el celular el campo baja debajo del texto; en pantalla ancha va al lado. */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+              <Flag className="h-4 w-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-slate-700">Saldo con el que empiezas</span>
+              <span className="block text-xs text-slate-500">
+                {cambiado
+                  ? `Cambiado a mano. El cierre del ${formatDate(datos.previousClosing.date)} decía ${formatMoney(delCierre, currency)}.`
+                  : `Lo del cierre del ${formatDate(datos.previousClosing.date)}. Si no es así, cámbialo.`}
+              </span>
+            </span>
+          </div>
+          <MoneyInput
+            aria-label="Saldo con el que empiezas"
+            className="w-full shrink-0 sm:w-40"
+            value={saldoInicial === '' ? delCierre : saldoInicial}
+            disabled={bloqueado}
+            onValueChange={onSaldoInicial}
+          />
+        </div>
+        {cambiado && !bloqueado && (
+          <button
+            type="button"
+            className="mt-1.5 text-xs font-medium text-marca-700 hover:underline"
+            onClick={() => onSaldoInicial('')}
+          >
+            Volver al saldo del cierre anterior
+          </button>
+        )}
+      </div>
       <LineaDesglose
         icono={<TrendingUp className="h-4 w-4" />}
         tono="verde"

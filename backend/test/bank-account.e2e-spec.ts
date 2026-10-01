@@ -271,6 +271,61 @@ describe('Cuenta del negocio (e2e)', () => {
     expect(movimientos.body).toEqual([]);
   });
 
+  it('el saldo con el que arranca el tramo viene del cierre anterior, pero se puede cambiar a mano', async () => {
+    // Automático: el del cierre de ayer (1.000.000) + lo que pasó por la cuenta.
+    const solo = await como(http().get(`/api/v1/bank-account/preview?date=${hoy}`)).expect(200);
+    expect(solo.body.openingBalance).toBe('1000000.00');
+    expect(solo.body.previousClosing.closingBalance).toBe('1000000.00');
+
+    // A mano: el cierre de ayer quedó mal y hoy se arranca con 900.000.
+    const aMano = await como(
+      http().get(`/api/v1/bank-account/preview?date=${hoy}&openingBalance=900000`),
+    ).expect(200);
+    expect(aMano.body.openingBalance).toBe('900000.00');
+    expect(Number(aMano.body.expectedBalance)).toBe(Number(solo.body.expectedBalance) - 100000);
+    expect(aMano.body.previousClosing.closingBalance).toBe('1000000.00');
+
+    const corregido = await como(
+      http()
+        .patch(`/api/v1/bank-account/closings/${cierreHoy}`)
+        .send({ openingBalance: 900000 }),
+    ).expect(200);
+    expect(corregido.body.openingBalance).toBe('900000');
+    expect(Number(corregido.body.expectedBalance)).toBe(Number(solo.body.expectedBalance) - 100000);
+    // Y corregir solo el saldo del banco respeta el inicial que ya tenía.
+    const otraVez = await como(
+      http().patch(`/api/v1/bank-account/closings/${cierreHoy}`).send({ closingBalance: 1152000 }),
+    ).expect(200);
+    expect(otraVez.body.openingBalance).toBe('900000');
+    expect(otraVez.body.difference).toBe('0');
+  });
+
+  it('la apertura de caja de un día es lo contado en el cierre anterior, salvo que se diga otra cosa', async () => {
+    const cierreCaja = await como(
+      http()
+        .post('/api/v1/cash-closings')
+        .send({ date: ayer, openingCash: 50000, closingCash: 180000 }),
+    ).expect(201);
+    const automatica = await como(http().get(`/api/v1/cash-closings/preview?date=${hoy}`)).expect(200);
+    expect(automatica.body.openingCash).toBe('180000.00');
+    expect(automatica.body.previousClosing).toEqual({ date: ayer, closingCash: '180000.00' });
+
+    const aMano = await como(
+      http().get(`/api/v1/cash-closings/preview?date=${hoy}&openingCash=150000`),
+    ).expect(200);
+    expect(aMano.body.openingCash).toBe('150000.00');
+    expect(Number(automatica.body.expectedCash) - Number(aMano.body.expectedCash)).toBe(30000);
+
+    // Sin cierre anterior, se abre con cero.
+    const sinNada = await como(
+      http().get(`/api/v1/cash-closings/preview?date=${sumarDias(ayer, -1)}`),
+    ).expect(200);
+    expect(sinNada.body.openingCash).toBe('0.00');
+    expect(sinNada.body.previousClosing).toBeNull();
+
+    await como(http().delete(`/api/v1/cash-closings/${cierreCaja.body.id}`)).expect(200);
+  });
+
   it('el último cierre sí se puede borrar', async () => {
     await como(http().delete(`/api/v1/bank-account/closings/${cierreHoy}`)).expect(200);
     const resumen = await como(http().get('/api/v1/bank-account/summary')).expect(200);

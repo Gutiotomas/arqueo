@@ -17,9 +17,13 @@ export interface OrderPayload {
   supplierId?: string;
   supplierName?: string;
   notes?: string;
-  discount?: number;
-  discountReason?: string;
-  items: { productId?: string; description?: string; quantity: number; unitPrice: number }[];
+  items: {
+    productId?: string;
+    description?: string;
+    quantity: number;
+    unitPrice: number;
+    isDiscount?: boolean;
+  }[];
 }
 
 export function useOrders(filtros: OrderFilters) {

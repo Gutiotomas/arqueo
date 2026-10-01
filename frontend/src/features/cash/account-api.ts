@@ -10,6 +10,8 @@ import type {
 } from '@/shared/api/types';
 
 export interface AccountClosingPayload {
+  /** Saldo con el que arranca el tramo; sin esto, el del cierre anterior. */
+  openingBalance?: number;
   date: string;
   closingBalance: number;
   notes?: string;
@@ -30,10 +32,15 @@ export function useAccountSummary() {
   });
 }
 
-export function useAccountPreview(date: string) {
+/** `openingBalance` vacío = el saldo del cierre anterior; un número lo sustituye. */
+export function useAccountPreview(date: string, openingBalance: number | '' = '') {
   return useQuery({
-    queryKey: ['account', 'preview', date],
-    queryFn: () => api.get<AccountPreview>('/bank-account/preview', { date }),
+    queryKey: ['account', 'preview', date, openingBalance],
+    queryFn: () =>
+      api.get<AccountPreview>('/bank-account/preview', {
+        date,
+        openingBalance: openingBalance === '' ? undefined : openingBalance,
+      }),
     enabled: Boolean(date),
     placeholderData: (anterior) => anterior,
   });
@@ -90,7 +97,7 @@ export function useUpdateAccountClosing() {
       datos,
     }: {
       id: string;
-      datos: { closingBalance?: number; notes?: string };
+      datos: { closingBalance?: number; openingBalance?: number; notes?: string };
     }) => api.patch<AccountClosing>(`/bank-account/closings/${id}`, datos),
     onSuccess: invalidar,
   });

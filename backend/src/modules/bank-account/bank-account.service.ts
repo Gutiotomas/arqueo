@@ -89,7 +89,11 @@ export class BankAccountService {
    * Lo que deberia haber en la cuenta al cerrar un dia: el saldo real del
    * cierre anterior mas todo lo que entro y salio desde entonces.
    */
-  async preview(businessId: string, date: string) {
+  /**
+   * `openingBalance` permite arrancar el tramo con otro saldo que el del
+   * cierre anterior (si aquel estaba mal y ya no se puede corregir).
+   */
+  async preview(businessId: string, date: string, openingBalance?: number) {
     const dia = parseBusinessDate(date);
 
     const [anterior, existente, posterior] = await Promise.all([
@@ -126,6 +130,8 @@ export class BankAccountService {
     }
 
     const flujos = await this.flujos(businessId, { desde: anterior.date, hasta: dia });
+    const apertura =
+      openingBalance !== undefined ? money(openingBalance) : anterior.closingBalance;
 
     return {
       ...base,
@@ -135,9 +141,10 @@ export class BankAccountService {
         date: formatBusinessDate(anterior.date),
         closingBalance: anterior.closingBalance.toFixed(2),
       },
-      openingBalance: anterior.closingBalance.toFixed(2),
+      /** Con lo que arranca el tramo: lo del cierre anterior, o lo que se tecleo. */
+      openingBalance: apertura.toFixed(2),
       movements: this.serializarFlujos(flujos),
-      expectedBalance: money(anterior.closingBalance.plus(flujos.neto)).toFixed(2),
+      expectedBalance: money(apertura.plus(flujos.neto)).toFixed(2),
     };
   }
 
@@ -169,7 +176,7 @@ export class BankAccountService {
       throw new BadRequestException('No se puede cerrar un día que todavía no llega');
     }
 
-    const preview = await this.preview(businessId, dto.date);
+    const preview = await this.preview(businessId, dto.date, dto.openingBalance);
 
     if (preview.existingClosingId) {
       throw new BadRequestException('Ese día ya tiene cierre de cuenta: corrígelo en lugar de crear otro');
@@ -194,7 +201,12 @@ export class BankAccountService {
   /** Solo el ultimo: los siguientes partirian de un saldo que ya no es el mismo. */
   async updateClosing(businessId: string, id: string, dto: UpdateAccountClosingDto) {
     const cierre = await this.soloElUltimo(businessId, id, 'corregir');
-    const preview = await this.preview(businessId, formatBusinessDate(cierre.date));
+    // Si no se manda otro saldo inicial, se respeta el que tenia el cierre.
+    const preview = await this.preview(
+      businessId,
+      formatBusinessDate(cierre.date),
+      dto.openingBalance ?? cierre.openingBalance?.toNumber(),
+    );
 
     return this.prisma.accountClosing.update({
       where: { id },

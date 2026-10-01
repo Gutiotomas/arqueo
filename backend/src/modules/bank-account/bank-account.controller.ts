@@ -41,11 +41,17 @@ export class BankAccountController {
       'Saldo esperado al cerrar un día: saldo del cierre anterior + lo que entró − lo que salió',
   })
   @ApiQuery({ name: 'date', example: '2026-09-22' })
+  @ApiQuery({ name: 'openingBalance', required: false, example: 1200000 })
   preview(
     @CurrentUser('businessId') businessId: string,
     @Query('date') date: string,
+    @Query('openingBalance') openingBalance?: string,
   ) {
-    return this.cuenta.preview(businessId, date);
+    return this.cuenta.preview(
+      businessId,
+      date,
+      openingBalance !== undefined && openingBalance !== '' ? Number(openingBalance) : undefined,
+    );
   }
 
   @Get('closings')

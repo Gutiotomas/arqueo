@@ -37,6 +37,9 @@ function DetallePedido({ pedido }: { pedido: PurchaseOrder }) {
         {pedido.items.map((item) => (
           <li key={item.id} className="flex justify-between gap-3 text-sm">
             <span className="min-w-0 text-slate-700">
+              {item.isDiscount && (
+                <span className="mr-1 text-xs font-medium text-emerald-700">Descuento ·</span>
+              )}
               <span className="tabular text-slate-500">
                 {cantidadConUnidad(item.quantity, item.product?.unit)} ×
               </span>{' '}
@@ -49,6 +52,7 @@ function DetallePedido({ pedido }: { pedido: PurchaseOrder }) {
               </span>
             </span>
             <span className="tabular shrink-0 font-medium text-slate-900">
+              {item.isDiscount ? '− ' : ''}
               {formatMoney(item.subtotal, currency)}
             </span>
           </li>
@@ -61,7 +65,7 @@ function DetallePedido({ pedido }: { pedido: PurchaseOrder }) {
             <span className="tabular">{formatMoney(pedido.subtotal, currency)}</span>
           </p>
           <p className="flex justify-between text-slate-500">
-            <span>Descuento{pedido.discountReason ? ` (${pedido.discountReason})` : ''}</span>
+            <span>Descuentos</span>
             <span className="tabular">− {formatMoney(pedido.discount, currency)}</span>
           </p>
           <p className="flex justify-between font-medium text-slate-900">
@@ -121,17 +125,29 @@ export function OrdersPage() {
     }
   }
 
-  /** Solo las líneas con producto del inventario pasan a la compra. */
+  /**
+   * Solo las líneas pedidas con producto del inventario pasan a la compra.
+   * Lo que el proveedor descuenta pasa como descuento de la compra, con el
+   * detalle como motivo.
+   */
   function registrarComoCompra(pedido: PurchaseOrder) {
-    const conProducto = pedido.items.filter((item) => item.productId);
-    const sueltas = pedido.items.length - conProducto.length;
+    const pedidas = pedido.items.filter((item) => !item.isDiscount);
+    const descontadas = pedido.items.filter((item) => item.isDiscount);
+    const conProducto = pedidas.filter((item) => item.productId);
+    const sueltas = pedidas.length - conProducto.length;
     setCompra({
       orderId: pedido.id,
       orderNumber: pedido.number,
       supplierId: pedido.supplier?.id,
       notes: `Pedido No. ${pedido.number}${sueltas > 0 ? ` (${sueltas} línea${sueltas === 1 ? '' : 's'} sin producto en inventario no pasaron)` : ''}`,
       ...(toNumber(pedido.discount) > 0
-        ? { discount: toNumber(pedido.discount), discountReason: pedido.discountReason ?? undefined }
+        ? {
+            discount: toNumber(pedido.discount),
+            discountReason: descontadas
+              .map((item) => `${cantidadConUnidad(item.quantity, item.product?.unit)} ${item.description}`)
+              .join(', ')
+              .slice(0, 200),
+          }
         : {}),
       items: conProducto.map((item) => ({
         productId: item.productId!,

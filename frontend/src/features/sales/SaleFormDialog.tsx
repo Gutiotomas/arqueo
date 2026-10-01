@@ -481,18 +481,20 @@ export function SaleFormDialog({
                         )}
                       </div>
                     ))}
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 text-xs font-medium text-marca-700 hover:underline"
+                    {/* Un botón de verdad, no un enlace pequeño: si no se ve, no se usa. */}
+                    <AddRowButton
+                      secundario
+                      icon={<Split className="h-4 w-4" />}
                       onClick={() => {
                         const nueva = parteVacia(formaDePagoInicial);
                         cambiarLinea(linea.key, { partes: [...linea.partes, nueva] });
                         enfocar(nueva.key);
                       }}
                     >
-                      <Split className="h-3.5 w-3.5" />
-                      Dividir: parte en otra forma de pago
-                    </button>
+                      {linea.partes.length > 1
+                        ? 'Añadir otra parte'
+                        : 'Una parte se pagó de otra forma (o fiada)'}
+                    </AddRowButton>
                   </div>
 
                   <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-2 text-sm">

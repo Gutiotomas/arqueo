@@ -77,7 +77,7 @@ export class PurchaseOrdersService {
   async create(businessId: string, userId: string, dto: CreatePurchaseOrderDto) {
     const lineas = await this.prepararLineas(businessId, dto.items);
     const supplierId = await this.resolverProveedor(businessId, dto);
-    const totales = this.totales(lineas, dto);
+    const totales = this.totales(lineas);
 
     return this.prisma.$transaction(async (tx) => {
       // Numero correlativo por negocio, como el talonario.
@@ -111,7 +111,7 @@ export class PurchaseOrdersService {
     this.soloPendiente(await this.findOne(businessId, id), 'editar');
     const lineas = await this.prepararLineas(businessId, dto.items);
     const supplierId = await this.resolverProveedor(businessId, dto);
-    const totales = this.totales(lineas, dto);
+    const totales = this.totales(lineas);
 
     return this.prisma.$transaction(async (tx) => {
       await tx.purchaseOrderItem.deleteMany({ where: { orderId: id } });
@@ -154,24 +154,26 @@ export class PurchaseOrdersService {
     return pedido;
   }
 
-  /** Subtotal de las lineas, descuento del proveedor y total = subtotal - descuento. */
-  private totales(
-    lineas: { subtotal: Prisma.Decimal }[],
-    dto: { discount?: number; discountReason?: string },
-  ) {
-    const subtotal = sumDecimals(lineas.map((linea) => linea.subtotal));
-    const discount = money(dto.discount ?? 0);
+  /**
+   * Suma de lo pedido, suma de lo que el proveedor descuenta y
+   * total = subtotal - descuento. Las lineas de descuento se guardan en
+   * positivo con su marca; el signo lo pone la cuenta.
+   */
+  private totales(lineas: { subtotal: Prisma.Decimal; isDiscount: boolean }[]) {
+    const pedidas = lineas.filter((linea) => !linea.isDiscount);
+    if (!pedidas.length) {
+      throw new BadRequestException('El pedido necesita al menos una línea de lo que pides');
+    }
+    const subtotal = sumDecimals(pedidas.map((linea) => linea.subtotal));
+    const discount = sumDecimals(
+      lineas.filter((linea) => linea.isDiscount).map((linea) => linea.subtotal),
+    );
     if (discount.greaterThan(subtotal)) {
       throw new BadRequestException(
-        'El descuento no puede ser mayor que la suma de las líneas del pedido',
+        'Lo que te descuenta no puede ser mayor que la suma de lo que pides',
       );
     }
-    return {
-      subtotal,
-      discount,
-      discountReason: discount.isZero() ? null : dto.discountReason?.trim() || null,
-      total: money(subtotal.minus(discount)),
-    };
+    return { subtotal, discount, total: money(subtotal.minus(discount)) };
   }
 
   /** arqueo-pedido-12-07-09-2026.pdf */
@@ -210,6 +212,7 @@ export class PurchaseOrdersService {
         quantity: cantidad,
         unitPrice: precio,
         subtotal: money(cantidad.times(precio)),
+        isDiscount: item.isDiscount ?? false,
       };
     });
   }

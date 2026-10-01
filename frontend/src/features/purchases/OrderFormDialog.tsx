@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Trash2 } from 'lucide-react';
+import { Minus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useSuppliers } from './api';
@@ -16,6 +16,7 @@ import { AddRowButton } from '@/shared/ui/add-row-button';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, MoneyInput, Select, Textarea } from '@/shared/ui/field';
+import { cn } from '@/shared/lib/cn';
 
 /** Etiqueta pequeña de cada campo de la tarjeta de producto. */
 const ETIQUETA = 'mb-1 block text-xs font-medium text-slate-500';
@@ -35,9 +36,15 @@ function lineaVacia(): Linea {
   return { key: crypto.randomUUID(), productId: '', description: '', quantity: '', unitPrice: '' };
 }
 
+/** Las dos listas del pedido: lo que se pide y lo que el proveedor descuenta. */
+type Lista = 'pedido' | 'descuento';
+
 /**
  * El pedido al proveedor, como la cuenta a mano: cantidad, producto (del
- * inventario o libre), valor unitario y total. No mueve inventario ni deuda.
+ * inventario o libre), valor unitario y total. Debajo, con el mismo detalle,
+ * lo que el proveedor descuenta (un cruce, una devolución, una promoción):
+ * el PDF es la cuenta de lo que se le va a pagar, así que tiene que verse.
+ * No mueve inventario ni deuda.
  */
 export function OrderFormDialog({
   open,
@@ -58,9 +65,8 @@ export function OrderFormDialog({
   const [proveedorId, setProveedorId] = useState('');
   const [proveedorNuevo, setProveedorNuevo] = useState('');
   const [notas, setNotas] = useState('');
-  const [descuento, setDescuento] = useState<number | ''>('');
-  const [motivoDescuento, setMotivoDescuento] = useState('');
   const [lineas, setLineas] = useState<Linea[]>([lineaVacia()]);
+  const [descuentos, setDescuentos] = useState<Linea[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const productos = useQuery({
@@ -94,38 +100,37 @@ export function OrderFormDialog({
       setProveedorId(pedido.supplier?.id ?? '');
       setProveedorNuevo('');
       setNotas(pedido.notes ?? '');
-      setDescuento(toNumber(pedido.discount) > 0 ? toNumber(pedido.discount) : '');
-      setMotivoDescuento(pedido.discountReason ?? '');
-      setLineas(
-        pedido.items.map((item) => ({
-          key: item.id,
-          productId: item.productId ?? PRODUCTO_LIBRE,
-          description: item.productId ? '' : item.description,
-          quantity: toNumber(item.quantity),
-          unitPrice: toNumber(item.unitPrice),
-        })),
-      );
+      const aLinea = (item: PurchaseOrder['items'][number]): Linea => ({
+        key: item.id,
+        productId: item.productId ?? PRODUCTO_LIBRE,
+        description: item.productId ? '' : item.description,
+        quantity: toNumber(item.quantity),
+        unitPrice: toNumber(item.unitPrice),
+      });
+      setLineas(pedido.items.filter((item) => !item.isDiscount).map(aLinea));
+      setDescuentos(pedido.items.filter((item) => item.isDiscount).map(aLinea));
     } else {
       setFecha(today());
       setProveedorId('');
       setProveedorNuevo('');
       setNotas('');
-      setDescuento('');
-      setMotivoDescuento('');
       setLineas([lineaVacia()]);
+      setDescuentos([]);
     }
   }, [open, pedido]);
 
-  function cambiarLinea(key: string, cambios: Partial<Linea>) {
-    setLineas((previas) =>
+  const setDe = (lista: Lista) => (lista === 'pedido' ? setLineas : setDescuentos);
+
+  function cambiarLinea(lista: Lista, key: string, cambios: Partial<Linea>) {
+    setDe(lista)((previas) =>
       previas.map((linea) => (linea.key === key ? { ...linea, ...cambios } : linea)),
     );
   }
 
   /** Al elegir producto se propone el costo que ya está guardado en inventario. */
-  function elegirProducto(key: string, productId: string) {
+  function elegirProducto(lista: Lista, key: string, productId: string) {
     const producto = porId.get(productId);
-    cambiarLinea(key, {
+    cambiarLinea(lista, key, {
       productId,
       description: '',
       unitPrice: producto ? toNumber(producto.costPrice) : '',
@@ -134,29 +139,40 @@ export function OrderFormDialog({
 
   const subtotal = (linea: Linea) => Number(linea.quantity || 0) * Number(linea.unitPrice || 0);
   const suma = lineas.reduce((acumulado, linea) => acumulado + subtotal(linea), 0);
-  const total = suma - Number(descuento || 0);
+  const descuento = descuentos.reduce((acumulado, linea) => acumulado + subtotal(linea), 0);
+  const total = suma - descuento;
 
   async function guardar() {
     setError(null);
 
     // Sin elegir nada, la tarjeta vacía no cuenta.
     const elegidas = lineas.filter((linea) => linea.productId);
-    const sinNombre = elegidas.findIndex(
+    const descontadas = descuentos.filter((linea) => linea.productId);
+    const sinNombre = [...elegidas, ...descontadas].find(
       (linea) => linea.productId === PRODUCTO_LIBRE && !linea.description.trim(),
     );
-    if (sinNombre >= 0) {
-      setError(`Escribe qué es el producto ${lineas.indexOf(elegidas[sinNombre]!) + 1}`);
+    if (sinNombre) {
+      setError(
+        descontadas.includes(sinNombre)
+          ? 'Escribe qué es lo que te descuenta'
+          : `Escribe qué es el producto ${lineas.indexOf(sinNombre) + 1}`,
+      );
       return;
     }
-    const items = elegidas.map((linea) => ({
+    const aItem = (linea: Linea, isDiscount: boolean) => ({
       ...(linea.productId === PRODUCTO_LIBRE
         ? { description: linea.description.trim() }
         : { productId: linea.productId }),
       quantity: Number(linea.quantity || 0),
       unitPrice: Number(linea.unitPrice || 0),
-    }));
+      ...(isDiscount ? { isDiscount: true } : {}),
+    });
+    const items = [
+      ...elegidas.map((linea) => aItem(linea, false)),
+      ...descontadas.map((linea) => aItem(linea, true)),
+    ];
 
-    if (!items.length) {
+    if (!elegidas.length) {
       setError('Añade al menos un producto');
       return;
     }
@@ -168,8 +184,8 @@ export function OrderFormDialog({
       setError('Escribe el nombre del proveedor nuevo');
       return;
     }
-    if (Number(descuento || 0) > suma) {
-      setError('El descuento no puede ser mayor que la suma de los productos');
+    if (descuento > suma) {
+      setError('Lo que te descuenta no puede ser mayor que la suma de lo que pides');
       return;
     }
 
@@ -181,12 +197,6 @@ export function OrderFormDialog({
           ? { supplierId: proveedorId }
           : {}),
       ...(notas.trim() ? { notes: notas.trim() } : {}),
-      ...(Number(descuento || 0) > 0
-        ? {
-            discount: Number(descuento),
-            ...(motivoDescuento.trim() ? { discountReason: motivoDescuento.trim() } : {}),
-          }
-        : {}),
       items,
     };
 
@@ -200,6 +210,113 @@ export function OrderFormDialog({
     } catch (fallo) {
       setError(fallo instanceof ApiError ? fallo.detalle : 'No se pudo guardar el pedido');
     }
+  }
+
+  /** Una tarjeta de línea: igual para lo que se pide y para lo que descuenta. */
+  function tarjeta(lista: Lista, linea: Linea, indice: number) {
+    const producto = porId.get(linea.productId);
+    const archivado = archivados.find((a) => a.id === linea.productId);
+    const paso = pasoCantidad(producto?.unit ?? archivado?.unit);
+    
+    const unidad = producto?.unit ?? archivado?.unit ?? 'ud';
+    return (
+      <div
+        key={linea.key}
+        data-nuevo={linea.key}
+        className={cn(
+          'rounded-lg border p-3',
+          lista === 'descuento'
+            ? 'border-emerald-200 bg-emerald-50/50'
+            : 'border-slate-200 bg-slate-50/60',
+        )}
+      >
+        <div className="flex items-start gap-2">
+          <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-12">
+            <div className="col-span-2 sm:col-span-6">
+              <span className={ETIQUETA}>
+                {lista === 'descuento' ? 'Qué te descuenta' : `Producto ${lineas.length > 1 ? indice + 1 : ''}`}
+              </span>
+              <Select
+                value={linea.productId}
+                onChange={(e) => elegirProducto(lista, linea.key, e.target.value)}
+                aria-label="Producto"
+              >
+                <option value="">{ELEGIR_PRODUCTO}</option>
+                {(productos.data?.data ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · quedan {cantidadConUnidad(p.stock, p.unit)}
+                  </option>
+                ))}
+                {archivados.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} (archivado)
+                  </option>
+                ))}
+                <option value={PRODUCTO_LIBRE}>{ETIQUETA_PRODUCTO_LIBRE}</option>
+              </Select>
+              {linea.productId === PRODUCTO_LIBRE && (
+                <Input
+                  className="mt-2"
+                  placeholder="¿Qué es? (p. ej. Quesito hoja)"
+                  aria-label="Descripción"
+                  value={linea.description}
+                  onChange={(e) => cambiarLinea(lista, linea.key, { description: e.target.value })}
+                />
+              )}
+            </div>
+            <div className="sm:col-span-2">
+              <span className={ETIQUETA}>Cantidad</span>
+              <Input
+                type="number"
+                min={paso.min}
+                step={paso.step}
+                inputMode={paso.inputMode}
+                aria-label="Cantidad"
+                placeholder={unidad}
+                className="text-right tabular"
+                value={linea.quantity}
+                onChange={(e) =>
+                  cambiarLinea(lista, linea.key, {
+                    quantity: e.target.value === '' ? '' : Number(e.target.value),
+                  })
+                }
+              />
+            </div>
+            <div className="sm:col-span-4">
+              <span className={ETIQUETA}>Vr. unidad</span>
+              <MoneyInput
+                aria-label="Valor unitario"
+                value={linea.unitPrice}
+                onValueChange={(valor) => cambiarLinea(lista, linea.key, { unitPrice: valor })}
+              />
+            </div>
+          </div>
+          {(lista === 'descuento' || lineas.length > 1) && (
+            <Button
+              variant="dangerGhost"
+              size="icon"
+              className="mt-5 shrink-0"
+              aria-label={lista === 'descuento' ? 'Quitar descuento' : 'Quitar producto'}
+              onClick={() =>
+                setDe(lista)((previas) => previas.filter((otra) => otra.key !== linea.key))
+              }
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
+        <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-2 text-sm">
+          <span className="text-slate-500">
+            {lista === 'descuento' ? 'Te descuenta' : 'Vr. total'}
+          </span>
+          <span className="tabular font-semibold text-slate-900">
+            {lista === 'descuento' ? '− ' : ''}
+            {formatMoney(subtotal(linea), currency)}
+          </span>
+        </div>
+      </div>
+    );
   }
 
   const guardando = crear.isPending || actualizar.isPending;
@@ -259,101 +376,7 @@ export function OrderFormDialog({
           <span className="mb-2 block text-sm font-medium text-slate-700">Lo que pides</span>
 
           <div className="space-y-3">
-            {lineas.map((linea, indice) => {
-              const producto = porId.get(linea.productId);
-              const archivado = archivados.find((a) => a.id === linea.productId);
-              const paso = pasoCantidad(producto?.unit ?? archivado?.unit);
-              
-              const unidad = producto?.unit ?? archivado?.unit ?? 'ud';
-              return (
-                <div
-                  key={linea.key}
-                  data-nuevo={linea.key}
-                  className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"
-                >
-                  <div className="flex items-start gap-2">
-                    <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-12">
-                      <div className="col-span-2 sm:col-span-6">
-                        <span className={ETIQUETA}>Producto {lineas.length > 1 ? indice + 1 : ''}</span>
-                        <Select
-                          value={linea.productId}
-                          onChange={(e) => elegirProducto(linea.key, e.target.value)}
-                          aria-label="Producto"
-                        >
-                          <option value="">{ELEGIR_PRODUCTO}</option>
-                          {(productos.data?.data ?? []).map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} · quedan {cantidadConUnidad(p.stock, p.unit)}
-                            </option>
-                          ))}
-                          {archivados.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} (archivado)
-                            </option>
-                          ))}
-                          <option value={PRODUCTO_LIBRE}>{ETIQUETA_PRODUCTO_LIBRE}</option>
-                        </Select>
-                        {linea.productId === PRODUCTO_LIBRE && (
-                          <Input
-                            className="mt-2"
-                            placeholder="¿Qué es? (p. ej. Quesito hoja)"
-                            aria-label="Descripción"
-                            value={linea.description}
-                            onChange={(e) => cambiarLinea(linea.key, { description: e.target.value })}
-                          />
-                        )}
-                      </div>
-                      <div className="sm:col-span-2">
-                        <span className={ETIQUETA}>Cantidad</span>
-                        <Input
-                          type="number"
-                          min={paso.min}
-                          step={paso.step}
-                          inputMode={paso.inputMode}
-                          aria-label="Cantidad"
-                          placeholder={unidad}
-                          className="text-right tabular"
-                          value={linea.quantity}
-                          onChange={(e) =>
-                            cambiarLinea(linea.key, {
-                              quantity: e.target.value === '' ? '' : Number(e.target.value),
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="sm:col-span-4">
-                        <span className={ETIQUETA}>Vr. unidad</span>
-                        <MoneyInput
-                          aria-label="Valor unitario"
-                          value={linea.unitPrice}
-                          onValueChange={(valor) => cambiarLinea(linea.key, { unitPrice: valor })}
-                        />
-                      </div>
-                    </div>
-                    {lineas.length > 1 && (
-                      <Button
-                        variant="dangerGhost"
-                        size="icon"
-                        className="mt-5 shrink-0"
-                        aria-label="Quitar producto"
-                        onClick={() =>
-                          setLineas((previas) => previas.filter((otra) => otra.key !== linea.key))
-                        }
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-2 text-sm">
-                    <span className="text-slate-500">Vr. total</span>
-                    <span className="tabular font-semibold text-slate-900">
-                      {formatMoney(subtotal(linea), currency)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+            {lineas.map((linea, indice) => tarjeta('pedido', linea, indice))}
 
             <AddRowButton
               onClick={() => {
@@ -367,28 +390,29 @@ export function OrderFormDialog({
           </div>
         </div>
 
-        {/* La cuenta que se le manda al proveedor: si hay cruce o promoción, va aquí. */}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field
-            label="Descuento del proveedor (opcional)"
-            hint="Lo que te resta del total. Sale en el PDF y pasa a la compra."
-          >
-            <MoneyInput
-              aria-label="Descuento"
-              value={descuento}
-              onValueChange={setDescuento}
-            />
-          </Field>
-          {Number(descuento || 0) > 0 && (
-            <Field label="Por qué te lo descuenta">
-              <Input
-                maxLength={200}
-                placeholder="Cruce por las gaseosas vencidas..."
-                value={motivoDescuento}
-                onChange={(e) => setMotivoDescuento(e.target.value)}
-              />
-            </Field>
-          )}
+        {/* La cuenta que se le manda al proveedor: lo que te descuenta va con
+            el mismo detalle (producto o descripción, cantidad y valor). */}
+        <div>
+          <span className="mb-1 block text-sm font-medium text-slate-700">
+            Lo que te descuenta (opcional)
+          </span>
+          <p className="mb-2 text-xs text-slate-500">
+            Un cruce, una devolución, una promoción: se resta del total y sale en el PDF.
+          </p>
+          <div className="space-y-3">
+            {descuentos.map((linea, indice) => tarjeta('descuento', linea, indice))}
+            <AddRowButton
+              secundario
+              icon={<Minus className="h-4 w-4" />}
+              onClick={() => {
+                const nueva = lineaVacia();
+                setDescuentos((previas) => [...previas, nueva]);
+                enfocar(nueva.key);
+              }}
+            >
+              {descuentos.length ? 'Añadir otro descuento' : 'El proveedor me descuenta algo'}
+            </AddRowButton>
+          </div>
         </div>
 
         <Field label="Notas (opcional)">
@@ -406,15 +430,15 @@ export function OrderFormDialog({
         )}
 
         <div className="rounded-lg bg-slate-900 px-4 py-3 text-white">
-          {Number(descuento || 0) > 0 && (
+          {descuento > 0 && (
             <div className="mb-2 space-y-1 border-b border-white/15 pb-2 text-sm text-slate-300">
               <div className="flex justify-between">
-                <span>Suma de los productos</span>
+                <span>Suma de lo que pides</span>
                 <span className="tabular">{formatMoney(suma, currency)}</span>
               </div>
               <div className="flex justify-between">
-                <span>Descuento</span>
-                <span className="tabular">− {formatMoney(Number(descuento), currency)}</span>
+                <span>Te descuenta</span>
+                <span className="tabular">− {formatMoney(descuento, currency)}</span>
               </div>
             </div>
           )}

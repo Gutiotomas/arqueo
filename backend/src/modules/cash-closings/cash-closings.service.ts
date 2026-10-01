@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
-import { parseBusinessDate } from '../../common/utils/dates';
+import { parseBusinessDate, formatBusinessDate } from '../../common/utils/dates';
 import { money, toDecimal } from '../../common/utils/money';
 import {
   CashClosingQueryDto,
@@ -58,7 +58,7 @@ export class CashClosingsService {
   async preview(businessId: string, date: string, openingCash?: number) {
     const day = parseBusinessDate(date);
 
-    const [ventas, cobros, gastos, abonos, reposiciones, cuenta, repartos, existente] =
+    const [ventas, cobros, gastos, abonos, reposiciones, cuenta, repartos, existente, anterior] =
       await Promise.all([
       // Cada linea de venta tiene su forma de pago: se suman las de efectivo.
       this.prisma.saleItem.aggregate({
@@ -114,6 +114,13 @@ export class CashClosingsService {
       this.prisma.cashClosing.findUnique({
         where: { businessId_date: { businessId, date: day } },
       }),
+      // El ultimo cierre antes de ese dia: lo que se conto entonces es con lo
+      // que se abre ahora, salvo que el dueno diga otra cosa.
+      this.prisma.cashClosing.findFirst({
+        where: { businessId, date: { lt: day } },
+        orderBy: { date: 'desc' },
+        select: { date: true, closingCash: true },
+      }),
     ]);
 
     const cashSales = ventas._sum.subtotal ?? new Prisma.Decimal(0);
@@ -128,7 +135,8 @@ export class CashClosingsService {
     const withdrawnFromAccount = deCuenta('CASH_WITHDRAWAL');
     const partnerWithdrawals = repartos._sum.amount ?? new Prisma.Decimal(0);
     const opening = money(
-      openingCash ?? (existente ? toDecimal(existente.openingCash) : 0),
+      openingCash ??
+        (existente ? toDecimal(existente.openingCash) : (anterior?.closingCash ?? 0)),
     );
     const expected = money(
       opening
@@ -143,7 +151,12 @@ export class CashClosingsService {
 
     return {
       date,
+      /** Lo tecleado; si no, lo del cierre guardado; si no, lo contado en el cierre anterior. */
       openingCash: opening.toFixed(2),
+      /** El ultimo cierre antes de ese dia, de donde sale la apertura automatica. */
+      previousClosing: anterior
+        ? { date: formatBusinessDate(anterior.date), closingCash: anterior.closingCash.toFixed(2) }
+        : null,
       cashSales: cashSales.toFixed(2),
       cashSalesCount: ventas._count,
       /** Cobros de ventas fiadas recibidos en efectivo ese dia. */

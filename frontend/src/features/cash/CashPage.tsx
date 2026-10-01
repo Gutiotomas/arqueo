@@ -73,6 +73,12 @@ export function CashPage() {
     setNotas(cierre.notes ?? '');
   }, [existente.data, fecha]);
 
+  // La apertura la propone el API (lo contado en el cierre anterior); si el
+  // dueño teclea otra, manda la suya. Vacío = automática.
+  const aperturaAutomatica = toNumber(preview.data?.openingCash);
+  const aperturaEfectiva = apertura === '' ? aperturaAutomatica : toNumber(apertura);
+  const cierreAnterior = preview.data?.previousClosing ?? null;
+
   const ventasEfectivo = toNumber(preview.data?.cashSales);
   const gastosEfectivo = toNumber(preview.data?.cashExpenses);
   const cobrosEfectivo = toNumber(preview.data?.cashCollections);
@@ -85,7 +91,7 @@ export function CashPage() {
   // formula estaba repetida aqui y se olvidaba de los abonos a proveedores.
   const movimientosDelDia =
     toNumber(preview.data?.expectedCash) - toNumber(preview.data?.openingCash);
-  const esperado = toNumber(apertura || 0) + movimientosDelDia;
+  const esperado = aperturaEfectiva + movimientosDelDia;
   const diferencia = contado === '' ? null : toNumber(contado) - esperado;
 
   const guardando = crear.isPending || actualizar.isPending;
@@ -101,7 +107,7 @@ export function CashPage() {
 
     const datos: CashClosingPayload = {
       date: fecha,
-      openingCash: toNumber(apertura || 0),
+      openingCash: aperturaEfectiva,
       closingCash: toNumber(contado),
       notes: notas.trim(),
     };
@@ -141,9 +147,17 @@ export function CashPage() {
                     onChange={(e) => cambiarDia(e.target.value)}
                   />
                 </Field>
-                <Field label="Efectivo de apertura">
+                <Field
+                  label="Efectivo de apertura"
+                  hint={
+                    cierreAnterior
+                      ? `Lo que contaste al cerrar el ${formatDate(cierreAnterior.date)}. Si no es así, cámbialo.`
+                      : 'Es tu primer cierre: escribe con cuánto efectivo abriste.'
+                  }
+                >
                   <MoneyInput
-                    value={apertura}
+                    aria-label="Efectivo de apertura"
+                    value={apertura === '' ? (preview.data ? aperturaAutomatica : '') : apertura}
                     onValueChange={setApertura}
                     placeholder="0"
                   />
@@ -168,8 +182,12 @@ export function CashPage() {
                     icono={<Banknote className="h-4 w-4" />}
                     tono="neutral"
                     etiqueta="Apertura"
-                    detalle={formatLongDate(fecha)}
-                    valor={formatMoney(apertura || 0, currency)}
+                    detalle={
+                      cierreAnterior && aperturaEfectiva === toNumber(cierreAnterior.closingCash)
+                        ? `Lo contado el ${formatDate(cierreAnterior.date)}`
+                        : formatLongDate(fecha)
+                    }
+                    valor={formatMoney(aperturaEfectiva, currency)}
                   />
                   <LineaDesglose
                     icono={<TrendingUp className="h-4 w-4" />}

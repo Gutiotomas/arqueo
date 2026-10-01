@@ -2,6 +2,7 @@ import { Split, Trash2 } from 'lucide-react';
 
 import { PAYMENT_METHODS, type PaymentMethod } from '@/shared/api/types';
 import { formatMoney } from '@/shared/lib/money';
+import { AddRowButton } from '@/shared/ui/add-row-button';
 import { Button } from '@/shared/ui/button';
 import { MoneyInput, Select } from '@/shared/ui/field';
 
@@ -75,24 +76,22 @@ export function PartesDePago({
           )}
         </div>
       ))}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 text-xs font-medium text-marca-700 hover:underline"
-          onClick={() => onChange([...partes, partePago()])}
-        >
-          <Split className="h-3.5 w-3.5" />
-          Dividir: otra parte con otra forma de pago
-        </button>
-        {partes.length > 1 && (
-          <span className="text-xs text-slate-500">
-            Entre todas: <span className="tabular font-medium text-slate-900">{formatMoney(suma, currency)}</span>
-            {maximo !== undefined && suma > maximo + 0.005 && (
-              <span className="text-red-600"> · se pasa de {formatMoney(maximo, currency)}</span>
-            )}
-          </span>
-        )}
-      </div>
+      {/* Un botón de verdad, no un enlace pequeño: si no se ve, no se usa. */}
+      <AddRowButton
+        secundario
+        icon={<Split className="h-4 w-4" />}
+        onClick={() => onChange([...partes, partePago()])}
+      >
+        {partes.length > 1 ? 'Añadir otra parte' : 'Pagué una parte de otra forma'}
+      </AddRowButton>
+      {partes.length > 1 && (
+        <p className="text-right text-xs text-slate-500">
+          Entre todas: <span className="tabular font-medium text-slate-900">{formatMoney(suma, currency)}</span>
+          {maximo !== undefined && suma > maximo + 0.005 && (
+            <span className="text-red-600"> · se pasa de {formatMoney(maximo, currency)}</span>
+          )}
+        </p>
+      )}
     </div>
   );
 }

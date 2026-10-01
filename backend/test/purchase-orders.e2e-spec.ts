@@ -107,35 +107,53 @@ describe('Pedidos a proveedor (e2e)', () => {
     expect(segundo.body.supplier).toBeNull();
   });
 
-  it('se puede corregir sin perder el número, lleva el descuento del proveedor y se descarga en PDF', async () => {
+  it('se puede corregir sin perder el número, lleva lo que el proveedor descuenta y se descarga en PDF', async () => {
+    // El proveedor descuenta dos cuajadas malas de la vez pasada y una promoción.
     const corregido = await como(
       http()
         .put(`/api/v1/purchase-orders/${pedidoId}`)
         .send({
           date: '2026-09-07',
           supplierName: 'Gustavo',
-          items: [{ productId: cuajadas, quantity: 8, unitPrice: 6800 }],
-          discount: 4400,
-          discountReason: 'Cruce por dos cuajadas malas',
+          items: [
+            { productId: cuajadas, quantity: 8, unitPrice: 6800 },
+            { productId: cuajadas, quantity: 2, unitPrice: 6800, isDiscount: true },
+            { description: 'Promoción del mes', quantity: 1, unitPrice: 1000, isDiscount: true },
+          ],
         }),
     ).expect(200);
     expect(corregido.body.number).toBe(1);
     expect(corregido.body.subtotal).toBe('54400');
-    expect(corregido.body.discount).toBe('4400');
-    expect(corregido.body.discountReason).toBe('Cruce por dos cuajadas malas');
-    expect(corregido.body.total).toBe('50000');
-    expect(corregido.body.items).toHaveLength(1);
+    expect(corregido.body.discount).toBe('14600');
+    expect(corregido.body.total).toBe('39800');
+    expect(corregido.body.items.map((i: { isDiscount: boolean; subtotal: string }) => [i.isDiscount, i.subtotal])).toEqual([
+      [false, '54400'],
+      [true, '13600'],
+      [true, '1000'],
+    ]);
 
     const deMas = await como(
       http()
         .put(`/api/v1/purchase-orders/${pedidoId}`)
         .send({
           date: '2026-09-07',
-          items: [{ productId: cuajadas, quantity: 8, unitPrice: 6800 }],
-          discount: 60000,
+          items: [
+            { productId: cuajadas, quantity: 8, unitPrice: 6800 },
+            { description: 'Cruce', quantity: 1, unitPrice: 60000, isDiscount: true },
+          ],
         }),
     ).expect(400);
-    expect(deMas.body.message).toMatch(/descuento/i);
+    expect(deMas.body.message).toMatch(/descuenta/i);
+
+    const soloDescuento = await como(
+      http()
+        .put(`/api/v1/purchase-orders/${pedidoId}`)
+        .send({
+          date: '2026-09-07',
+          items: [{ description: 'Cruce', quantity: 1, unitPrice: 100, isDiscount: true }],
+        }),
+    ).expect(400);
+    expect(soloDescuento.body.message).toMatch(/al menos una línea/i);
 
     const pdf = await como(
       http()

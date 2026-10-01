@@ -181,7 +181,10 @@ export interface CashClosing {
 
 export interface CashPreview {
   date: string;
+  /** Lo tecleado; si no, lo del cierre guardado; si no, lo contado en el cierre anterior. */
   openingCash: string;
+  /** El último cierre antes de ese día, de donde sale la apertura automática. */
+  previousClosing: { date: string; closingCash: string } | null;
   cashSales: string;
   cashSalesCount: number;
   /** Cobros de ventas fiadas recibidos en efectivo ese día. */
@@ -258,6 +261,7 @@ export interface AccountPreview {
   laterClosingDate: string | null;
   isStartingPoint: boolean;
   previousClosing: { id: string; date: string; closingBalance: string } | null;
+  /** Con lo que arranca el tramo: lo del cierre anterior, o lo que se tecleó. */
   openingBalance: string | null;
   movements: AccountFlows | null;
   expectedBalance: string | null;
@@ -454,6 +458,8 @@ export interface PurchaseOrderItem {
   quantity: string;
   unitPrice: string;
   subtotal: string;
+  /** Resta en vez de sumar: lo que el proveedor descuenta. */
+  isDiscount: boolean;
   product: { id: string; name: string; unit: string } | null;
 }
 
@@ -465,9 +471,8 @@ export interface PurchaseOrder {
   date: string;
   /** Suma de las líneas antes del descuento. */
   subtotal: string;
-  /** Lo que el proveedor resta; va en el PDF, que es la cuenta que se le manda. */
+  /** Suma de las líneas de descuento; va en el PDF, que es la cuenta que se le manda. */
   discount: string;
-  discountReason: string | null;
   /** subtotal − discount. */
   total: string;
   notes: string | null;

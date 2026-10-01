@@ -416,10 +416,10 @@ model PurchaseOrder {
   date       DateTime            @db.Date
   /// Suma de las lineas, antes del descuento.
   subtotal       Decimal @default(0) @db.Decimal(14, 2)
-  /// Lo que el proveedor resta (un cruce, una promocion). El PDF es la cuenta
-  /// que se le manda, asi que el descuento tiene que verse ahi.
+  /// Suma de las lineas de descuento (lo que el proveedor resta: un cruce,
+  /// una devolucion, una promocion). El PDF es la cuenta que se le manda,
+  /// asi que el descuento tiene que verse ahi con su detalle.
   discount       Decimal @default(0) @db.Decimal(14, 2)
-  discountReason String? @map("discount_reason")
   /// subtotal - discount: lo que se le pagara al proveedor.
   total      Decimal             @db.Decimal(14, 2)
   notes      String?
@@ -454,6 +454,8 @@ model PurchaseOrderItem {
   subtotal    Decimal @db.Decimal(14, 2)
   /// Orden en que se escribieron, como en la cuenta a mano.
   position    Int     @default(0)
+  /// Una linea que resta en vez de sumar: "me descuenta 2 cuajadas".
+  isDiscount  Boolean @default(false) @map("is_discount")
 
   order   PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)

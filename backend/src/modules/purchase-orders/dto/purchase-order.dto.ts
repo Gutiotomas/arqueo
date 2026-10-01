@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsNotEmpty,
   IsNumber,
@@ -46,6 +47,14 @@ export class PurchaseOrderItemDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   unitPrice!: number;
+
+  @ApiPropertyOptional({
+    default: false,
+    description: 'La linea resta en vez de sumar: lo que el proveedor descuenta (un cruce, una devolucion).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isDiscount?: boolean;
 }
 
 export class CreatePurchaseOrderDto {
@@ -71,22 +80,6 @@ export class CreatePurchaseOrderDto {
   @ValidateNested({ each: true })
   @Type(() => PurchaseOrderItemDto)
   items!: PurchaseOrderItemDto[];
-
-  @ApiPropertyOptional({
-    example: 15000,
-    description: 'Lo que el proveedor resta del total. No puede superar la suma de las lineas.',
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  discount?: number;
-
-  @ApiPropertyOptional({ example: 'Cruce por las gaseosas vencidas' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  discountReason?: string;
 
   @ApiPropertyOptional({ example: 'Para el lunes' })
   @IsOptional()

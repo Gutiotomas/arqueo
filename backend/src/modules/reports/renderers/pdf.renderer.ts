@@ -525,14 +525,32 @@ export class PdfRenderer {
           widths: ['auto', '*', 'auto', 'auto'],
           body: [
             [this.th('Cantidad'), this.th('Descripción'), this.th('Vr. unidad'), this.th('Vr. total')],
-            ...pedido.items.map((item): TableCell[] => [
-              // La cantidad va sola; el tamaño del paquete ("6 uds") acompaña
-              // al nombre, que es donde se entiende: "6 · Arepa × 6 uds".
-              this.td(formatQuantity(item.quantity.toString()), 'center'),
-              this.td(describir(item.description, item.product?.unit)),
-              this.td(dinero(item.unitPrice.toString()), 'right'),
-              this.td(dinero(item.subtotal.toString()), 'right'),
-            ]),
+            ...pedido.items
+              .filter((item) => !item.isDiscount)
+              .map((item): TableCell[] => [
+                // La cantidad va sola; el tamaño del paquete ("6 uds") acompaña
+                // al nombre, que es donde se entiende: "6 · Arepa × 6 uds".
+                this.td(formatQuantity(item.quantity.toString()), 'center'),
+                this.td(describir(item.description, item.product?.unit)),
+                this.td(dinero(item.unitPrice.toString()), 'right'),
+                this.td(dinero(item.subtotal.toString()), 'right'),
+              ]),
+            // Lo que el proveedor descuenta, con el mismo detalle y en negativo:
+            // asi ve de donde sale lo que se le va a pagar.
+            ...pedido.items
+              .filter((item) => item.isDiscount)
+              .map((item): TableCell[] => [
+                this.td(formatQuantity(item.quantity.toString()), 'center'),
+                {
+                  text: [
+                    { text: 'Descuento · ', color: GRIS },
+                    describir(item.description, item.product?.unit),
+                  ],
+                  margin: [6, 4, 6, 4],
+                },
+                this.td(dinero(item.unitPrice.toString()), 'right'),
+                this.td(`- ${dinero(item.subtotal.toString())}`, 'right'),
+              ]),
           ],
         },
         layout: this.layoutRejilla(),
@@ -560,13 +578,7 @@ export class PdfRenderer {
                         },
                       ],
                       [
-                        {
-                          text: pedido.discountReason
-                            ? `Descuento (${pedido.discountReason})`
-                            : 'Descuento',
-                          color: GRIS,
-                          margin: [8, 2, 8, 4],
-                        },
+                        { text: 'Descuentos', color: GRIS, margin: [8, 2, 8, 4] },
                         {
                           text: `- ${dinero(pedido.discount.toString())}`,
                           alignment: 'right',
