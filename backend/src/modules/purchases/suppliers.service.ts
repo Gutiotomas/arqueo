@@ -54,10 +54,13 @@ export class SuppliersService {
   async remove(businessId: string, id: string) {
     await this.findOne(businessId, id);
 
-    const compras = await this.prisma.purchase.count({ where: { supplierId: id } });
-    if (compras > 0) {
+    const [compras, creditos] = await Promise.all([
+      this.prisma.purchase.count({ where: { supplierId: id } }),
+      this.prisma.supplierCredit.count({ where: { supplierId: id } }),
+    ]);
+    if (compras > 0 || creditos > 0) {
       throw new ConflictException(
-        `No se puede borrar: tiene ${compras} compra(s) registradas`,
+        `No se puede borrar: tiene ${compras} compra(s) y ${creditos} crédito(s) registrados`,
       );
     }
 

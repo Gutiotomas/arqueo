@@ -15,6 +15,9 @@ import { CreateLossDto, LossQueryDto, ResolveLossDto } from './dto/loss.dto';
 const LOSS_INCLUDE = {
   product: { select: { id: true, name: true, unit: true } },
   supplier: { select: { id: true, name: true } },
+  supplierCredit: {
+    select: { id: true, amount: true, remainingAmount: true },
+  },
 } satisfies Prisma.StockLossInclude;
 
 @Injectable()
@@ -96,11 +99,17 @@ export class LossesService {
     const costoUnitario = money(producto.costPrice);
     const resolution = dto.resolution ?? 'PENDING';
     const costoReposicion = money(dto.replacementUnitCost ?? 0);
-    const devolucion = resolution === 'REFUNDED'
-      ? money(cantidad.times(costoUnitario))
-      : money(0);
+    const devolucion =
+      resolution === 'REFUNDED' || resolution === 'SUPPLIER_CREDIT'
+        ? money(cantidad.times(costoUnitario))
+        : money(0);
 
     this.validarRespuesta(resolution, costoReposicion, dto.paymentMethod);
+    const supplierId = await this.validarProveedorCredito(
+      businessId,
+      resolution,
+      dto.supplierId,
+    );
 
     return this.prisma.$transaction(async (tx) => {
       const perdida = await tx.stockLoss.create({
@@ -108,7 +117,7 @@ export class LossesService {
           businessId,
           userId,
           productId: dto.productId,
-          supplierId: dto.supplierId ?? null,
+          supplierId: supplierId ?? dto.supplierId ?? null,
           date: parseBusinessDate(dto.date),
           quantity: cantidad,
           unitCost: costoUnitario,
@@ -116,7 +125,7 @@ export class LossesService {
           resolution,
           replacementUnitCost: costoReposicion,
           refundAmount: devolucion,
-          paymentMethod: dto.paymentMethod ?? null,
+          paymentMethod: resolution === 'REFUNDED' ? (dto.paymentMethod ?? null) : null,
           lossAmount: this.calcularPerdida(
             resolution,
             cantidad,
@@ -128,6 +137,18 @@ export class LossesService {
           notes: dto.notes?.trim() || null,
         },
       });
+
+      if (resolution === 'SUPPLIER_CREDIT') {
+        await tx.supplierCredit.create({
+          data: {
+            businessId,
+            supplierId: supplierId!,
+            stockLossId: perdida.id,
+            amount: devolucion,
+            remainingAmount: devolucion,
+          },
+        });
+      }
 
       await this.aplicarMovimientos(tx, perdida.id, {
         businessId,
@@ -168,11 +189,30 @@ export class LossesService {
     );
     const metodo = dto.paymentMethod ?? perdida.paymentMethod ?? undefined;
     const devolucion =
-      dto.resolution === 'REFUNDED'
+      dto.resolution === 'REFUNDED' || dto.resolution === 'SUPPLIER_CREDIT'
         ? money(cantidad.times(toDecimal(perdida.unitCost)))
         : money(0);
 
     this.validarRespuesta(dto.resolution, costoReposicion, metodo);
+    const supplierId = await this.validarProveedorCredito(
+      businessId,
+      dto.resolution,
+      dto.supplierId ?? perdida.supplierId ?? undefined,
+    );
+    const creditoYaUsado =
+      perdida.supplierCredit !== null &&
+      toDecimal(perdida.supplierCredit.remainingAmount).lessThan(
+        toDecimal(perdida.supplierCredit.amount),
+      );
+    if (
+      creditoYaUsado &&
+      (dto.resolution !== 'SUPPLIER_CREDIT' ||
+        supplierId !== perdida.supplierId)
+    ) {
+      throw new BadRequestException(
+        'No se puede cambiar la respuesta: ya se aplicó parte de este saldo a una compra',
+      );
+    }
 
     const reponiaAntes = repone(perdida.resolution);
     const reponeAhora = repone(dto.resolution);
@@ -204,15 +244,43 @@ export class LossesService {
       // Si deja de haber cobro, no se guarda un costo de reposicion viejo
       // que ya no significa nada.
       const cobra = dto.resolution === 'DISCOUNTED';
+      if (perdida.supplierCredit) {
+        if (dto.resolution === 'SUPPLIER_CREDIT' && !creditoYaUsado) {
+          await tx.supplierCredit.update({
+            where: { id: perdida.supplierCredit.id },
+            data: {
+              supplierId: supplierId!,
+              amount: devolucion,
+              remainingAmount: devolucion,
+            },
+          });
+        } else if (dto.resolution !== 'SUPPLIER_CREDIT') {
+          await tx.supplierCredit.delete({
+            where: { id: perdida.supplierCredit.id },
+          });
+        }
+      } else if (dto.resolution === 'SUPPLIER_CREDIT') {
+        await tx.supplierCredit.create({
+          data: {
+            businessId,
+            supplierId: supplierId!,
+            stockLossId: id,
+            amount: devolucion,
+            remainingAmount: devolucion,
+          },
+        });
+      }
 
       await tx.stockLoss.update({
         where: { id },
         data: {
           resolution: dto.resolution,
+          ...(dto.resolution === 'SUPPLIER_CREDIT'
+            ? { supplierId: supplierId! }
+            : {}),
           replacementUnitCost: cobra ? costoReposicion : new Prisma.Decimal(0),
           refundAmount: devolucion,
-          paymentMethod:
-            cobra || dto.resolution === 'REFUNDED' ? (metodo ?? null) : null,
+          paymentMethod: cobra || dto.resolution === 'REFUNDED' ? (metodo ?? null) : null,
           lossAmount: this.calcularPerdida(
             dto.resolution,
             cantidad,
@@ -245,6 +313,16 @@ export class LossesService {
     const aDevolver = repone(perdida.resolution)
       ? new Prisma.Decimal(0)
       : cantidad;
+    if (perdida.supplierCredit) {
+      const aplicaciones = await this.prisma.supplierCreditApplication.count({
+        where: { supplierCreditId: perdida.supplierCredit.id },
+      });
+      if (aplicaciones > 0) {
+        throw new BadRequestException(
+          'No se puede borrar: el saldo a favor ya se aplicó a una compra',
+        );
+      }
+    }
 
     await this.prisma.$transaction(async (tx) => {
       if (aDevolver.greaterThan(0)) {
@@ -324,6 +402,7 @@ export class LossesService {
     switch (resolution) {
       case 'FREE':
       case 'REFUNDED':
+      case 'SUPPLIER_CREDIT':
         return new Prisma.Decimal(0);
       case 'DISCOUNTED':
         return money(cantidad.times(costoReposicion));
@@ -355,6 +434,29 @@ export class LossesService {
         'Indica dónde recibiste la devolución del proveedor',
       );
     }
+  }
+
+  private async validarProveedorCredito(
+    businessId: string,
+    resolution: LossResolution,
+    supplierId?: string | null,
+  ): Promise<string | undefined> {
+    if (resolution !== 'SUPPLIER_CREDIT') return undefined;
+    if (!supplierId) {
+      throw new BadRequestException(
+        'Selecciona el proveedor para guardar el saldo a favor',
+      );
+    }
+    const supplier = await this.prisma.supplier.findFirst({
+      where: { id: supplierId, businessId },
+      select: { id: true },
+    });
+    if (!supplier) {
+      throw new BadRequestException(
+        'El proveedor no existe o no pertenece a este negocio',
+      );
+    }
+    return supplier.id;
   }
 
   private async aplicarMovimientos(

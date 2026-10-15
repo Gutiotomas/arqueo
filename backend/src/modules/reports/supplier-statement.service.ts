@@ -31,6 +31,8 @@ export interface SupplierStatement {
     closingBalance: string;
     /** Lo que se le debe hoy, sea del periodo que sea. */
     currentBalance: string;
+    /** Saldo a favor disponible para aplicar en otra compra. */
+    availableCredit: string;
     /** De lo que se debe hoy, lo que ya paso su fecha de vencimiento. */
     overdue: string;
     purchasesCount: number;
@@ -93,7 +95,7 @@ export class SupplierStatementService {
       throw new BadRequestException('La fecha inicial no puede ser posterior a la final');
     }
 
-    const [business, supplier, compras, abonos] = await Promise.all([
+    const [business, supplier, compras, abonos, creditos] = await Promise.all([
       this.prisma.business.findUniqueOrThrow({
         where: { id: businessId },
         select: { name: true, currency: true, timezone: true },
@@ -113,6 +115,10 @@ export class SupplierStatementService {
           purchase: { select: { date: true, invoiceNumber: true, isOpeningBalance: true } },
         },
         orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+      }),
+      this.prisma.supplierCredit.aggregate({
+        where: { businessId, supplierId },
+        _sum: { remainingAmount: true },
       }),
     ]);
 
@@ -174,6 +180,7 @@ export class SupplierStatementService {
         paid: paid.toFixed(2),
         closingBalance: money(openingBalance.plus(purchased).minus(paid)).toFixed(2),
         currentBalance: currentBalance.toFixed(2),
+        availableCredit: money(creditos._sum.remainingAmount ?? 0).toFixed(2),
         overdue: overdue.toFixed(2),
         purchasesCount: comprasPeriodo.length,
         paymentsCount: abonosPeriodo.length,

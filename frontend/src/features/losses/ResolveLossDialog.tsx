@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   calcularPerdida,
   useResolveLoss,
+  useSuppliers,
   type ResolveLossPayload,
 } from './api';
 import { RespuestaDelProveedor } from './LossFormDialog';
@@ -22,6 +23,7 @@ import { cantidadConUnidad } from '@/shared/lib/unidades';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Field, Input, Textarea } from '@/shared/ui/field';
+import { Select } from '@/shared/ui/field';
 
 /**
  * LossesPage lo monta solo con un caso elegido, así que el formulario arranca
@@ -38,9 +40,11 @@ export function ResolveLossDialog({
 }) {
   const { currency } = useAuth();
   const resolver = useResolveLoss();
+  const proveedores = useSuppliers();
 
   const costoGuardado = toNumber(perdida.replacementUnitCost);
   const [respuesta, setRespuesta] = useState<LossResolution>(perdida.resolution);
+  const [proveedorId, setProveedorId] = useState(perdida.supplier?.id ?? '');
   const [costoReposicion, setCostoReposicion] = useState<number | ''>(
     costoGuardado > 0 ? costoGuardado : '',
   );
@@ -71,6 +75,10 @@ export function ResolveLossDialog({
       setError('Si el proveedor cobra por la reposición, escribe cuánto cobra por unidad');
       return;
     }
+    if (respuesta === 'SUPPLIER_CREDIT' && !proveedorId) {
+      setError('Elige el proveedor al que corresponde el saldo a favor');
+      return;
+    }
 
     const datos: ResolveLossPayload = {
       resolution: respuesta,
@@ -81,6 +89,7 @@ export function ResolveLossDialog({
           }
         : {}),
       ...(respuesta === 'REFUNDED' ? { paymentMethod: formaDePago } : {}),
+      ...(respuesta === 'SUPPLIER_CREDIT' ? { supplierId: proveedorId } : {}),
       ...(respuesta === 'PENDING' ? {} : { resolvedAt: fechaRespuesta }),
       notes: notas.trim(),
     };
@@ -138,6 +147,14 @@ export function ResolveLossDialog({
               </span>
             </div>
           )}
+          {respuesta === 'SUPPLIER_CREDIT' && (
+            <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-slate-200 pt-2">
+              <span className="text-sm text-emerald-700">Saldo a favor con el proveedor</span>
+              <span className="tabular text-lg font-bold text-emerald-700">
+                {formatMoney(unidades * costoUnitario, currency)}
+              </span>
+            </div>
+          )}
           {perdida.notes && (
             <p className="mt-2 border-t border-slate-200 pt-2 text-xs text-slate-500">
               {perdida.notes}
@@ -155,6 +172,26 @@ export function ResolveLossDialog({
           formaDePago={formaDePago}
           onFormaDePagoChange={setFormaDePago}
         />
+
+        {respuesta === 'SUPPLIER_CREDIT' && (
+          <Field
+            label="Proveedor"
+            hint="El crédito se guardará con este proveedor y podrás aplicarlo al registrar una compra."
+          >
+            <Select
+              value={proveedorId}
+              onChange={(event) => setProveedorId(event.target.value)}
+              aria-label="Proveedor del saldo a favor"
+            >
+              <option value="">Elige un proveedor</option>
+              {(proveedores.data ?? []).map((supplier) => (
+                <option key={supplier.id} value={supplier.id}>
+                  {supplier.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
 
         {respuesta !== 'PENDING' && (
           <Field
@@ -217,7 +254,9 @@ export function ResolveLossDialog({
                   ? 'No vuelve nada al inventario: pierdes todo lo que te costó.'
                   : respuesta === 'REFUNDED'
                     ? 'No vuelve mercancía al inventario: el proveedor te devuelve en dinero el costo de lo dañado.'
-                  : 'Hasta que conteste se cuenta como pérdida total.'}
+                      : respuesta === 'SUPPLIER_CREDIT'
+                        ? 'No vuelve mercancía al inventario: el costo queda como saldo a favor para usarlo en una compra posterior.'
+                    : 'Hasta que conteste se cuenta como pérdida total.'}
           </p>
         </div>
       </div>

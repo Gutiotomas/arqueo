@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 
-import { useAddPayments, type PaymentPayload } from './api';
+import {
+  useAddPayments,
+  useSupplierCredits,
+  type PaymentPayload,
+} from './api';
 import { useAuth } from '@/features/auth/auth-context';
 import { ApiError } from '@/shared/api/client';
 import type { Purchase } from '@/shared/api/types';
@@ -22,12 +26,16 @@ export function PaymentDialog({
 }) {
   const { currency } = useAuth();
   const abonar = useAddPayments();
+  const creditos = useSupplierCredits(compra?.supplier?.id ?? '', open);
 
   const [fecha, setFecha] = useState(today());
   // "200.000 en efectivo y 300.000 de la cuenta": el abono puede ir por partes.
   const [partes, setPartes] = useState<PartePago[]>([partePago()]);
   const [descuento, setDescuento] = useState<number | ''>('');
   const [motivoDescuento, setMotivoDescuento] = useState('');
+  const [creditosSeleccionados, setCreditosSeleccionados] = useState<
+    Record<string, number | ''>
+  >({});
   const [notas, setNotas] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -40,6 +48,7 @@ export function PaymentDialog({
     setPartes([partePago()]);
     setDescuento('');
     setMotivoDescuento('');
+    setCreditosSeleccionados({});
     setNotas('');
     setError(null);
   }, [open, compra?.id]);
@@ -49,18 +58,36 @@ export function PaymentDialog({
     if (!compra) return;
 
     const nuevoDescuento = Number(descuento || 0);
+    const aplicacionesCredito = (creditos.data ?? [])
+      .map((credit) => ({
+        creditId: credit.id,
+        amount: Number(creditosSeleccionados[credit.id] || 0),
+        disponible: toNumber(credit.remainingAmount),
+      }))
+      .filter((credit) => credit.amount > 0);
+    const totalCredito = aplicacionesCredito.reduce(
+      (sum, credit) => sum + credit.amount,
+      0,
+    );
     const cantidad = sumaPartes(partes);
-    if (nuevoDescuento <= 0 && cantidad <= 0) {
-      setError('Escribe cuánto vas a abonar o el descuento que te dio el proveedor');
+    if (nuevoDescuento <= 0 && cantidad <= 0 && totalCredito <= 0) {
+      setError('Registra un abono, un descuento o saldo a favor del proveedor');
       return;
     }
     if (nuevoDescuento > saldo) {
       setError(`El descuento supera el saldo pendiente (${formatMoney(saldo, currency)})`);
       return;
     }
-    if (cantidad > saldo - nuevoDescuento) {
+    if (
+      aplicacionesCredito.some((credit) => credit.amount > credit.disponible) ||
+      totalCredito > saldo - nuevoDescuento
+    ) {
+      setError('El saldo a favor supera lo disponible o el saldo pendiente');
+      return;
+    }
+    if (cantidad > saldo - nuevoDescuento - totalCredito) {
       setError(
-        `El abono supera el saldo después del descuento (${formatMoney(saldo - nuevoDescuento, currency)})`,
+        `El abono supera el saldo después del descuento y el crédito (${formatMoney(saldo - nuevoDescuento - totalCredito, currency)})`,
       );
       return;
     }
@@ -78,12 +105,16 @@ export function PaymentDialog({
       await abonar.mutateAsync({
         purchaseId: compra.id,
         pagos,
-        ...(nuevoDescuento > 0
+        ...(nuevoDescuento > 0 ? { discount: nuevoDescuento } : {}),
+        ...(nuevoDescuento > 0 && motivoDescuento.trim()
+          ? { discountReason: motivoDescuento.trim() }
+          : {}),
+        ...(aplicacionesCredito.length
           ? {
-              discount: nuevoDescuento,
-              ...(motivoDescuento.trim()
-                ? { discountReason: motivoDescuento.trim() }
-                : {}),
+              supplierCredits: aplicacionesCredito.map(({ creditId, amount }) => ({
+                creditId,
+                amount,
+              })),
             }
           : {}),
       });
@@ -96,9 +127,17 @@ export function PaymentDialog({
     }
   }
 
-  const saldoConDescuento = saldo - Number(descuento || 0);
+  const totalCreditoSeleccionado = (creditos.data ?? []).reduce(
+    (sum, credit) => sum + Number(creditosSeleccionados[credit.id] || 0),
+    0,
+  );
+  const saldoConDescuento =
+    saldo - Number(descuento || 0) - totalCreditoSeleccionado;
   const restante = saldoConDescuento - sumaPartes(partes);
-  const puedeGuardar = Number(descuento || 0) > 0 || sumaPartes(partes) > 0;
+  const puedeGuardar =
+    Number(descuento || 0) > 0 ||
+    totalCreditoSeleccionado > 0 ||
+    sumaPartes(partes) > 0;
 
   return (
     <Dialog
@@ -151,7 +190,9 @@ export function PaymentDialog({
             size="sm"
             className="mt-2 w-full"
             onClick={() =>
-              setPartes([partePago(Math.max(saldoConDescuento, 0), partes[0]?.paymentMethod)])
+              setPartes([
+                partePago(Math.max(saldoConDescuento, 0), partes[0]?.paymentMethod),
+              ])
             }
           >
             Pagar todo el saldo restante
@@ -176,6 +217,41 @@ export function PaymentDialog({
               placeholder="Producto defectuoso"
             />
           </Field>
+        )}
+
+        {(creditos.data?.length ?? 0) > 0 && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+            <p className="text-sm font-medium text-emerald-900">Aplicar saldo a favor</p>
+            <p className="mt-0.5 text-xs text-emerald-800">
+              Puedes usar el crédito del proveedor para reducir esta deuda.
+            </p>
+            <ul className="mt-3 space-y-2">
+              {creditos.data?.map((credit) => (
+                <li
+                  key={credit.id}
+                  className="grid items-center gap-2 sm:grid-cols-[1fr_10rem]"
+                >
+                  <span className="text-sm text-slate-700">
+                    {credit.description}
+                    <span className="ml-1 text-xs text-slate-500">
+                      Disponible: {formatMoney(credit.remainingAmount, currency)}
+                    </span>
+                  </span>
+                  <MoneyInput
+                    aria-label={`Crédito a aplicar de ${credit.description}`}
+                    value={creditosSeleccionados[credit.id] ?? ''}
+                    onValueChange={(amount) =>
+                      setCreditosSeleccionados((current) => ({
+                        ...current,
+                        [credit.id]: amount,
+                      }))
+                    }
+                    placeholder="No aplicar"
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <Field label="Fecha del abono" className="sm:max-w-xs">

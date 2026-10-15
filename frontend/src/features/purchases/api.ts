@@ -7,6 +7,7 @@ import type {
   Purchase,
   PurchaseStatus,
   Supplier,
+  SupplierCredit,
   SupplierDebt,
 } from '@/shared/api/types';
 
@@ -34,6 +35,11 @@ export interface PaymentPayload {
   notes?: string;
 }
 
+export interface SupplierCreditApplicationPayload {
+  creditId: string;
+  amount: number;
+}
+
 export interface PurchasePayload {
   date: string;
   /** Proveedor que ya existe... */
@@ -47,6 +53,7 @@ export interface PurchasePayload {
   /** Lo que el proveedor restó del total: un cruce, una devolución... */
   discount?: number;
   discountReason?: string;
+  supplierCredits?: SupplierCreditApplicationPayload[];
   /** Lo que se paga en el momento; sin esto la compra queda a deber entera. */
   initialPayment?: PaymentPayload;
   /** Lo mismo, repartido: parte en efectivo y parte de la cuenta. */
@@ -84,6 +91,14 @@ export function useSuppliers() {
   return useQuery({
     queryKey: ['suppliers'],
     queryFn: () => api.get<Supplier[]>('/suppliers'),
+  });
+}
+
+export function useSupplierCredits(supplierId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['purchases', 'credits', supplierId],
+    queryFn: () => api.get<SupplierCredit[]>('/purchases/credits', { supplierId }),
+    enabled: enabled && !!supplierId,
   });
 }
 
@@ -149,15 +164,18 @@ export function useAddPayments() {
       pagos,
       discount,
       discountReason,
+      supplierCredits,
     }: {
       purchaseId: string;
       pagos: PaymentPayload[];
       discount?: number;
       discountReason?: string;
+      supplierCredits?: SupplierCreditApplicationPayload[];
     }) =>
       api.post<Purchase>(`/purchases/${purchaseId}/payments/split`, {
         ...(pagos.length ? { payments: pagos } : {}),
         ...(discount ? { discount, discountReason } : {}),
+        ...(supplierCredits?.length ? { supplierCredits } : {}),
       }),
     onSuccess: invalidar,
   });

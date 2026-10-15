@@ -43,6 +43,7 @@ export interface LossPayload {
 /** Lo que se manda cuando el proveedor por fin contesta. */
 export interface ResolveLossPayload {
   resolution: LossResolution;
+  supplierId?: string;
   replacementUnitCost?: number;
   paymentMethod?: PaymentMethod;
   resolvedAt?: string;
@@ -59,7 +60,13 @@ export function calcularPerdida(
   costoUnitario: number,
   costoReposicion: number,
 ): number {
-  if (resolution === 'FREE' || resolution === 'REFUNDED') return 0;
+  if (
+    resolution === 'FREE' ||
+    resolution === 'REFUNDED' ||
+    resolution === 'SUPPLIER_CREDIT'
+  ) {
+    return 0;
+  }
   if (resolution === 'DISCOUNTED') return cantidad * costoReposicion;
   // Sin respuesta todavía se asume lo peor: se pierde toda la mercancía.
   return cantidad * costoUnitario;
@@ -105,11 +112,13 @@ function useInvalidarPerdidas() {
   const cliente = useQueryClient();
   return () => {
     cliente.invalidateQueries({ queryKey: ['losses'] });
+    cliente.invalidateQueries({ queryKey: ['purchases'] });
     cliente.invalidateQueries({ queryKey: ['dashboard'] });
     cliente.invalidateQueries({ queryKey: ['accounting'] });
     cliente.invalidateQueries({ queryKey: ['products'] });
     cliente.invalidateQueries({ queryKey: ['cash'] });
     cliente.invalidateQueries({ queryKey: ['account'] });
+    cliente.invalidateQueries({ queryKey: ['suppliers'] });
   };
 }
 

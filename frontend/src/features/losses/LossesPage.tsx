@@ -37,6 +37,7 @@ const TONO_RESPUESTA: Record<LossResolution, 'warning' | 'success' | 'info' | 'd
     DISCOUNTED: 'info',
     NONE: 'danger',
     REFUNDED: 'success',
+    SUPPLIER_CREDIT: 'success',
   };
 
 function filtrosIniciales(): LossFilters {
@@ -55,6 +56,7 @@ function LoPerdido({ perdida }: { perdida: StockLoss }) {
   const { currency } = useAuth();
   const importe = toNumber(perdida.lossAmount);
   const devuelto = toNumber(perdida.refundAmount);
+  const credito = toNumber(perdida.supplierCredit?.remainingAmount);
 
   return importe > 0 ? (
     <span className="tabular font-semibold text-red-700">
@@ -65,7 +67,11 @@ function LoPerdido({ perdida }: { perdida: StockLoss }) {
       Sin pérdida
       {devuelto > 0 && (
         <span className="block tabular text-xs font-normal">
-          Devuelto: {formatMoney(devuelto, currency)}
+          {perdida.resolution === 'SUPPLIER_CREDIT' ? 'Saldo disponible' : 'Devuelto'}:{' '}
+          {formatMoney(
+            perdida.resolution === 'SUPPLIER_CREDIT' ? credito : devuelto,
+            currency,
+          )}
         </span>
       )}
     </span>

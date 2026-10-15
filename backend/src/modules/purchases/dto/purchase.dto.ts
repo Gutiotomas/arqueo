@@ -37,6 +37,24 @@ export class PurchaseItemDto {
   unitCost!: number;
 }
 
+export class SupplierCreditApplicationDto {
+  @ApiProperty({ format: 'uuid', description: 'Crédito a favor creado por una pérdida' })
+  @IsUUID('4')
+  creditId!: string;
+
+  @ApiProperty({ example: 5000 })
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  amount!: number;
+}
+
+export class SupplierCreditQueryDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID('4')
+  supplierId!: string;
+}
+
 export class PurchasePaymentDto {
   @ApiProperty({ example: '2026-09-19' })
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'La fecha debe tener formato YYYY-MM-DD' })
@@ -87,6 +105,13 @@ export class PurchasePaymentsDto {
   @IsString()
   @MaxLength(200)
   discountReason?: string;
+
+  @ApiPropertyOptional({ type: [SupplierCreditApplicationDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SupplierCreditApplicationDto)
+  supplierCredits?: SupplierCreditApplicationDto[];
 }
 
 export class CreatePurchaseDto {
@@ -146,6 +171,13 @@ export class CreatePurchaseDto {
   @IsString()
   @MaxLength(200)
   discountReason?: string;
+
+  @ApiPropertyOptional({ type: [SupplierCreditApplicationDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SupplierCreditApplicationDto)
+  supplierCredits?: SupplierCreditApplicationDto[];
 
   @ApiPropertyOptional({
     type: PurchasePaymentDto,

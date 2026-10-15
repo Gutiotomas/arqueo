@@ -271,7 +271,7 @@ function EstadoDeCuenta({
       </div>
 
       {/* Como un extracto: de dónde se parte, qué entra, qué sale y dónde queda. */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Cifra titulo="Saldo al empezar" valor={formatMoney(resumen.openingBalance, currency)} />
         <Cifra
           titulo="Compras"
@@ -287,6 +287,10 @@ function EstadoDeCuenta({
           titulo="Saldo al final"
           valor={formatMoney(resumen.closingBalance, currency)}
           destacado
+        />
+        <Cifra
+          titulo="Saldo a favor disponible"
+          valor={formatMoney(resumen.availableCredit, currency)}
         />
       </div>
 

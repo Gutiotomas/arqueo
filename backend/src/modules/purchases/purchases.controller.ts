@@ -21,6 +21,7 @@ import {
   PurchasePaymentDto,
   PurchasePaymentsDto,
   PurchaseQueryDto,
+  SupplierCreditQueryDto,
   SupplierDto,
 } from './dto/purchase.dto';
 import { PurchasesService } from './purchases.service';
@@ -45,6 +46,15 @@ export class PurchasesController {
   @ApiOperation({ summary: 'Cuánto se debe, a quién, y qué está vencido' })
   debt(@CurrentUser('businessId') businessId: string) {
     return this.purchases.debt(businessId);
+  }
+
+  @Get('credits')
+  @ApiOperation({ summary: 'Saldos a favor disponibles de un proveedor' })
+  findSupplierCredits(
+    @CurrentUser('businessId') businessId: string,
+    @Query() query: SupplierCreditQueryDto,
+  ) {
+    return this.purchases.findSupplierCredits(businessId, query);
   }
 
   @Get(':id')

@@ -145,6 +145,15 @@ function DetalleCompra({
         </div>
       )}
 
+      {toNumber(compra.creditsApplied) > 0 && (
+        <p className="flex justify-between gap-3 border-t border-slate-200 pt-2 text-sm text-emerald-700">
+          <span>Saldo a favor aplicado</span>
+          <span className="tabular shrink-0 font-medium">
+            − {formatMoney(compra.creditsApplied, currency)}
+          </span>
+        </p>
+      )}
+
       <div>
         <p className="mb-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase">
           Abonos al proveedor
@@ -264,6 +273,7 @@ export function PurchasesPage() {
 
   const totalDeuda = toNumber(deuda.data?.total);
   const vencido = toNumber(deuda.data?.overdue);
+  const creditoDisponible = toNumber(deuda.data?.availableCredit);
   const hayFiltros =
     Boolean(filtros.supplierId) || Boolean(filtros.status) || !filtros.from;
 
@@ -331,12 +341,18 @@ export function PurchasesPage() {
 
       <div className="space-y-4 p-4 sm:p-6">
         {/* Lo primero que quiere saber el dueño: cuánto debe. */}
-        <Card className={cn('overflow-hidden', totalDeuda > 0 && 'border-amber-300')}>
+        <Card
+          className={cn(
+            'overflow-hidden',
+            totalDeuda > 0 && 'border-amber-300',
+            creditoDisponible > 0 && totalDeuda <= 0 && 'border-emerald-300',
+          )}
+        >
           {deuda.isLoading ? (
             <Loading rows={2} />
           ) : deuda.isError ? (
             <ErrorMessage error={deuda.error} onRetry={() => deuda.refetch()} />
-          ) : totalDeuda <= 0 ? (
+          ) : totalDeuda <= 0 && creditoDisponible <= 0 ? (
             <EmptyState
               icon={<CheckCircle2 className="h-9 w-9 text-emerald-500" />}
               title="Estás al día con tus proveedores"
@@ -356,15 +372,28 @@ export function PurchasesPage() {
             <>
               <div className="bg-amber-50 px-4 py-4 sm:px-5">
                 <p className="text-sm font-medium text-amber-900">
-                  Le debes a tus proveedores
+                  {totalDeuda > 0
+                    ? 'Le debes a tus proveedores'
+                    : 'Tienes saldo a favor con tus proveedores'}
                 </p>
-                <p className="tabular mt-1 text-3xl font-bold text-amber-900">
-                  {formatMoney(totalDeuda, currency)}
+                <p
+                  className={cn(
+                    'tabular mt-1 text-3xl font-bold',
+                    totalDeuda > 0 ? 'text-amber-900' : 'text-emerald-800',
+                  )}
+                >
+                  {formatMoney(totalDeuda > 0 ? totalDeuda : creditoDisponible, currency)}
                 </p>
                 <p className="mt-1 text-xs text-amber-800">
-                  En {deuda.data?.purchasesCount ?? 0} compra
-                  {deuda.data?.purchasesCount === 1 ? '' : 's'} sin terminar de pagar.
+                  {totalDeuda > 0
+                    ? `En ${deuda.data?.purchasesCount ?? 0} compra${deuda.data?.purchasesCount === 1 ? '' : 's'} sin terminar de pagar.`
+                    : 'Puedes usarlo al registrar una compra o al abonar una compra pendiente.'}
                 </p>
+                {totalDeuda > 0 && creditoDisponible > 0 && (
+                  <p className="mt-2 text-sm font-semibold text-emerald-800">
+                    Saldo a favor disponible: {formatMoney(creditoDisponible, currency)}
+                  </p>
+                )}
                 {vencido > 0 && (
                   <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-red-100 px-2.5 py-1.5 text-sm font-semibold text-red-700">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -386,8 +415,9 @@ export function PurchasesPage() {
                           {proveedor.name}
                         </span>
                         <span className="block text-xs text-slate-500">
-                          {proveedor.purchasesCount} compra
-                          {proveedor.purchasesCount === 1 ? '' : 's'} por pagar
+                          {proveedor.availableCredit && toNumber(proveedor.availableCredit) > 0
+                            ? `Saldo a favor: ${formatMoney(proveedor.availableCredit, currency)}`
+                            : `${proveedor.purchasesCount} compra${proveedor.purchasesCount === 1 ? '' : 's'} por pagar`}
                         </span>
                       </span>
                       <span className="tabular shrink-0 text-sm font-semibold text-slate-900">

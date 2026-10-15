@@ -345,4 +345,66 @@ describe('Mercancía dañada (e2e)', () => {
     ).expect(400);
     expect(sinMetodo.body.message).toMatch(/dónde recibiste/i);
   });
+
+  it('guarda devoluciones como saldo a favor y permite aplicarlas a compras', async () => {
+    const compraAbierta = await como(
+      http().post('/api/v1/purchases').send({
+        date: hoy,
+        supplierName: `Proveedor crédito ${sufijo}`,
+        items: [{ productId: productoId, quantity: 2, unitCost: 2000 }],
+      }),
+    ).expect(201);
+    const supplierId = compraAbierta.body.supplier.id as string;
+
+    const perdida = await como(
+      http().post('/api/v1/losses').send({
+        productId: productoId,
+        date: hoy,
+        quantity: 1,
+        reason: 'DAMAGED',
+        resolution: 'SUPPLIER_CREDIT',
+        supplierId,
+      }),
+    ).expect(201);
+    expect(perdida.body.lossAmount).toBe('0');
+    expect(perdida.body.supplierCredit.remainingAmount).toBe('1000');
+
+    const abonada = await como(
+      http().post(`/api/v1/purchases/${compraAbierta.body.id}/payments/split`).send({
+        supplierCredits: [{ creditId: perdida.body.supplierCredit.id, amount: 400 }],
+      }),
+    ).expect(201);
+    expect(abonada.body.total).toBe('3600');
+    expect(abonada.body.creditsApplied).toBe('400');
+
+    const nuevaCompra = await como(
+      http().post('/api/v1/purchases').send({
+        date: hoy,
+        supplierId,
+        items: [{ productId: productoId, quantity: 1, unitCost: 2000 }],
+        supplierCredits: [{ creditId: perdida.body.supplierCredit.id, amount: 600 }],
+      }),
+    ).expect(201);
+    expect(nuevaCompra.body.total).toBe('1400');
+    expect(nuevaCompra.body.creditsApplied).toBe('600');
+
+    const sinSaldo = await como(
+      http().get(`/api/v1/purchases/credits?supplierId=${supplierId}`),
+    ).expect(200);
+    expect(sinSaldo.body).toHaveLength(0);
+
+    await como(http().delete(`/api/v1/purchases/${nuevaCompra.body.id}`)).expect(200);
+    const restaurado = await como(
+      http().get(`/api/v1/purchases/credits?supplierId=${supplierId}`),
+    ).expect(200);
+    expect(restaurado.body[0].remainingAmount).toBe('600');
+
+    await como(http().delete(`/api/v1/losses/${perdida.body.id}`)).expect(400);
+    await como(http().delete(`/api/v1/purchases/${compraAbierta.body.id}`)).expect(200);
+    const recuperado = await como(
+      http().get(`/api/v1/purchases/credits?supplierId=${supplierId}`),
+    ).expect(200);
+    expect(recuperado.body[0].remainingAmount).toBe('1000');
+    await como(http().delete(`/api/v1/losses/${perdida.body.id}`)).expect(200);
+  });
 });

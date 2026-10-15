@@ -42,6 +42,7 @@ model Business {
   expenses          Expense[]
   cashClosings      CashClosing[]
   stockLosses       StockLoss[]
+  supplierCredits  SupplierCredit[]
   suppliers         Supplier[]
   purchases         Purchase[]
   purchasePayments  PurchasePayment[]
@@ -391,6 +392,7 @@ model Supplier {
   purchases Purchase[]
   losses    StockLoss[]
   orders    PurchaseOrder[]
+  credits   SupplierCredit[]
 
   @@unique([businessId, name])
   @@index([businessId])
@@ -483,6 +485,8 @@ model Purchase {
   total            Decimal   @db.Decimal(14, 2)
   /// Suma de los abonos. Se actualiza en la misma transaccion que el abono.
   paidAmount       Decimal   @default(0) @map("paid_amount") @db.Decimal(14, 2)
+  /// Créditos a favor aplicados desde reclamaciones por mercancía dañada.
+  creditsApplied   Decimal   @default(0) @map("credits_applied") @db.Decimal(14, 2)
   /// Cuando hay que terminar de pagarla, si el proveedor dio plazo.
   dueDate          DateTime? @map("due_date") @db.Date
   notes            String?
@@ -498,6 +502,7 @@ model Purchase {
   user     User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   items    PurchaseItem[]
   payments PurchasePayment[]
+  supplierCredits SupplierCreditApplication[]
 
   @@index([businessId, date])
   @@index([supplierId])
@@ -545,6 +550,40 @@ model PurchasePayment {
   @@map("purchase_payments")
 }
 
+/// Crédito que el proveedor reconoce por una pérdida y que aún puede usarse.
+model SupplierCredit {
+  id               String   @id @default(uuid()) @db.Uuid
+  businessId       String   @map("business_id") @db.Uuid
+  supplierId       String   @map("supplier_id") @db.Uuid
+  stockLossId      String   @unique @map("stock_loss_id") @db.Uuid
+  amount           Decimal  @db.Decimal(14, 2)
+  remainingAmount  Decimal  @map("remaining_amount") @db.Decimal(14, 2)
+  createdAt        DateTime @default(now())
+
+  business    Business                    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  supplier    Supplier                    @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  stockLoss   StockLoss                   @relation(fields: [stockLossId], references: [id], onDelete: Cascade)
+  applications SupplierCreditApplication[]
+
+  @@index([businessId, supplierId, remainingAmount])
+  @@map("supplier_credits")
+}
+
+/// Aplicación total o parcial de un crédito a una compra concreta.
+model SupplierCreditApplication {
+  id               String  @id @default(uuid()) @db.Uuid
+  supplierCreditId String  @map("supplier_credit_id") @db.Uuid
+  purchaseId       String  @map("purchase_id") @db.Uuid
+  amount           Decimal @db.Decimal(14, 2)
+
+  supplierCredit SupplierCredit @relation(fields: [supplierCreditId], references: [id], onDelete: Cascade)
+  purchase       Purchase       @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseId])
+  @@index([supplierCreditId])
+  @@map("supplier_credit_applications")
+}
+
 // --------------------------------------------------------------------------
 // Mercancia danada, vencida o perdida
 //
@@ -570,6 +609,7 @@ enum LossResolution {
   DISCOUNTED // la repuso cobrando menos de lo que vale
   NONE // no la repone
   REFUNDED // devuelve en dinero el costo de la mercancia: perdida total
+  SUPPLIER_CREDIT // queda como saldo a favor para una compra posterior
 }
 
 model StockLoss {
@@ -607,6 +647,7 @@ model StockLoss {
   supplier  Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   user      User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
   movements StockMovement[]
+  supplierCredit SupplierCredit?
 
   @@index([businessId, date])
   @@index([productId])

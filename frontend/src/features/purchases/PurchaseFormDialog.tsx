@@ -2,7 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-import { useCreatePurchase, useSuppliers, type PurchasePayload } from './api';
+import {
+  useCreatePurchase,
+  useSupplierCredits,
+  useSuppliers,
+  type PurchasePayload,
+} from './api';
 import { useAuth } from '@/features/auth/auth-context';
 import { ApiError, api } from '@/shared/api/client';
 import {
@@ -83,6 +88,9 @@ export function PurchaseFormDialog({
   const [lineas, setLineas] = useState<Linea[]>([lineaVacia()]);
   const [descuento, setDescuento] = useState<number | ''>('');
   const [motivoDescuento, setMotivoDescuento] = useState('');
+  const [creditosSeleccionados, setCreditosSeleccionados] = useState<
+    Record<string, number | ''>
+  >({});
   const [comoPago, setComoPago] = useState<ComoPago>('nada');
   // Lo que se paga ahora, por partes: "200.000 en efectivo y 300.000 de la cuenta".
   const [partesPago, setPartesPago] = useState<PartePago[]>([partePago()]);
@@ -95,6 +103,10 @@ export function PurchaseFormDialog({
       api.get<Paginated<Product>>('/products', { limit: 200, isActive: true }),
     enabled: open,
   });
+  const creditos = useSupplierCredits(
+    proveedorId === PROVEEDOR_NUEVO ? '' : proveedorId,
+    open,
+  );
 
   const porId = useMemo(
     () => new Map((productos.data?.data ?? []).map((p) => [p.id, p])),
@@ -122,6 +134,7 @@ export function PurchaseFormDialog({
     );
     setDescuento(inicial?.discount ? inicial.discount : '');
     setMotivoDescuento(inicial?.discountReason ?? '');
+    setCreditosSeleccionados({});
     setComoPago('nada');
     setPartesPago([partePago()]);
     setError(null);
@@ -146,7 +159,16 @@ export function PurchaseFormDialog({
     (suma, linea) => suma + Number(linea.quantity || 0) * Number(linea.unitCost || 0),
     0,
   );
-  const total = subtotal - Number(descuento || 0);
+  const creditosAplicados = (creditos.data ?? [])
+    .map((credit) => ({
+      creditId: credit.id,
+      amount: Number(creditosSeleccionados[credit.id] || 0),
+      disponible: toNumber(credit.remainingAmount),
+    }))
+    .filter((credit) => credit.amount > 0);
+  const totalCredito = creditosAplicados.reduce((sum, credit) => sum + credit.amount, 0);
+  const totalAntesDeCredito = subtotal - Number(descuento || 0);
+  const total = totalAntesDeCredito - totalCredito;
 
   const pagadoAhora = roundMoney(comoPago === 'algo' ? sumaPartes(partesPago) : 0);
   const quedaADeber = total - pagadoAhora;
@@ -182,6 +204,13 @@ export function PurchaseFormDialog({
       setError('El descuento no puede ser mayor que la suma de los productos');
       return;
     }
+    if (
+      creditosAplicados.some((credit) => credit.amount > credit.disponible) ||
+      totalCredito > totalAntesDeCredito
+    ) {
+      setError('Revisa el saldo a favor: no puede superar lo disponible ni el total de la compra');
+      return;
+    }
     if (comoPago === 'algo' && pagadoAhora <= 0) {
       setError('Escribe cuánto pagaste ahora');
       return;
@@ -207,6 +236,14 @@ export function PurchaseFormDialog({
         ? {
             discount: Number(descuento),
             ...(motivoDescuento.trim() ? { discountReason: motivoDescuento.trim() } : {}),
+          }
+        : {}),
+      ...(creditosAplicados.length
+        ? {
+            supplierCredits: creditosAplicados.map(({ creditId, amount }) => ({
+              creditId,
+              amount,
+            })),
           }
         : {}),
       ...(pagadoAhora > 0
@@ -300,6 +337,41 @@ export function PurchaseFormDialog({
             )}
           </Field>
         </div>
+
+        {(creditos.data?.length ?? 0) > 0 && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+            <p className="text-sm font-medium text-emerald-900">Saldo a favor disponible</p>
+            <p className="mt-0.5 text-xs text-emerald-800">
+              Elige cuánto aplicar a esta compra. Lo que no uses queda disponible con el proveedor.
+            </p>
+            <ul className="mt-3 space-y-2">
+              {creditos.data?.map((credit) => (
+                <li
+                  key={credit.id}
+                  className="grid items-center gap-2 sm:grid-cols-[1fr_10rem]"
+                >
+                  <span className="text-sm text-slate-700">
+                    {credit.description}
+                    <span className="ml-1 text-xs text-slate-500">
+                      Disponible: {formatMoney(credit.remainingAmount, currency)}
+                    </span>
+                  </span>
+                  <MoneyInput
+                    aria-label={`Crédito a aplicar de ${credit.description}`}
+                    value={creditosSeleccionados[credit.id] ?? ''}
+                    onValueChange={(amount) =>
+                      setCreditosSeleccionados((current) => ({
+                        ...current,
+                        [credit.id]: amount,
+                      }))
+                    }
+                    placeholder="No aplicar"
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Nº de factura (opcional)">
@@ -518,7 +590,7 @@ export function PurchaseFormDialog({
         )}
 
         <div className="rounded-lg bg-slate-900 px-4 py-3 text-white">
-          {Number(descuento || 0) > 0 && (
+          {(Number(descuento || 0) > 0 || totalCredito > 0) && (
             <div className="mb-2 space-y-1 border-b border-white/15 pb-2 text-sm text-slate-300">
               <div className="flex items-center justify-between">
                 <span>Mercancía</span>
@@ -528,6 +600,12 @@ export function PurchaseFormDialog({
                 <span>Descuento del proveedor</span>
                 <span className="tabular">− {formatMoney(Number(descuento), currency)}</span>
               </div>
+              {totalCredito > 0 && (
+                <div className="flex items-center justify-between">
+                  <span>Saldo a favor aplicado</span>
+                  <span className="tabular">− {formatMoney(totalCredito, currency)}</span>
+                </div>
+              )}
             </div>
           )}
           <div className="flex items-center justify-between">

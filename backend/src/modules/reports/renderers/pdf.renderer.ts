@@ -85,7 +85,7 @@ export class PdfRenderer {
       // Los cuatro numeros que importan
       {
         table: {
-          widths: ['*', '*', '*', '*'],
+          widths: ['*', '*', '*', '*', '*'],
           body: [
             [
               this.kpi('Ventas', dinero(data.kpis.sales), VERDE),
@@ -390,6 +390,11 @@ export class PdfRenderer {
                 dinero(resumen.closingBalance),
                 Number(resumen.closingBalance) > 0 ? ROJO : VERDE,
               ),
+              this.kpi(
+                'Saldo a favor disponible',
+                dinero(resumen.availableCredit),
+                VERDE,
+              ),
             ],
           ],
         },
@@ -400,8 +405,10 @@ export class PdfRenderer {
         text: debe
           ? `Hoy le debes ${dinero(resumen.currentBalance)}${
               vencido ? `, de los cuales ${dinero(resumen.overdue)} ya están vencidos` : ''
-            }.`
-          : 'Hoy no le debes nada a este proveedor.',
+            }.${Number(resumen.availableCredit) > 0 ? ` Tienes ${dinero(resumen.availableCredit)} a favor para otra compra.` : ''}`
+          : Number(resumen.availableCredit) > 0
+            ? `Hoy no le debes nada a este proveedor. Tienes ${dinero(resumen.availableCredit)} a favor para otra compra.`
+            : 'Hoy no le debes nada a este proveedor.',
         bold: true,
         color: vencido ? ROJO : debe ? '#111827' : VERDE,
         margin: [0, 0, 0, 14],

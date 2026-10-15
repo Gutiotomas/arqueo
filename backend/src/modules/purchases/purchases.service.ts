@@ -16,6 +16,7 @@ import {
   PurchasePaymentDto,
   PurchasePaymentsDto,
   PurchaseQueryDto,
+  SupplierCreditQueryDto,
 } from './dto/purchase.dto';
 
 const PURCHASE_INCLUDE = {
@@ -90,6 +91,38 @@ export class PurchasesService {
     return this.conSaldo(compra);
   }
 
+  async findSupplierCredits(businessId: string, query: SupplierCreditQueryDto) {
+    const supplier = await this.prisma.supplier.findFirst({
+      where: { id: query.supplierId, businessId },
+      select: { id: true },
+    });
+    if (!supplier) {
+      throw new NotFoundException('Proveedor no encontrado');
+    }
+
+    const credits = await this.prisma.supplierCredit.findMany({
+      where: {
+        businessId,
+        supplierId: query.supplierId,
+        remainingAmount: { gt: 0 },
+      },
+      include: {
+        stockLoss: {
+          include: { product: { select: { name: true } } },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return credits.map((credit) => ({
+      id: credit.id,
+      date: credit.createdAt,
+      amount: credit.amount.toFixed(2),
+      remainingAmount: credit.remainingAmount.toFixed(2),
+      description: `Pérdida por ${credit.stockLoss.product.name}`,
+    }));
+  }
+
   /**
    * Registra la compra: entra la mercancia al inventario (no es un gasto, es
    * un activo), se recalcula el costo promedio de cada producto y, si se pago
@@ -119,6 +152,25 @@ export class PurchasesService {
       );
     }
     const total = money(subtotal.minus(descuento));
+    const creditApplications = dto.supplierCredits ?? [];
+    const creditTotal = sumDecimals(
+      creditApplications.map((application) => money(application.amount)),
+    );
+    if (creditTotal.greaterThan(total)) {
+      throw new BadRequestException(
+        'El crédito aplicado no puede superar el total de la compra',
+      );
+    }
+    let supplierForCredits: string | undefined;
+    if (creditApplications.length) {
+      if (!supplierId) {
+        throw new BadRequestException(
+          'Selecciona el proveedor para aplicar su saldo a favor',
+        );
+      }
+      supplierForCredits = supplierId;
+    }
+    const totalAfterCredits = money(total.minus(creditTotal));
     // Lo que se paga en el momento puede venir repartido: parte en efectivo,
     // parte de la cuenta.
     const pagosIniciales = [
@@ -129,9 +181,9 @@ export class PurchasesService {
       ? sumDecimals(pagosIniciales.map((pago) => money(pago.amount)))
       : null;
 
-    if (abono && abono.greaterThan(total)) {
+    if (abono && abono.greaterThan(totalAfterCredits)) {
       throw new BadRequestException(
-        'El abono no puede ser mayor que el total de la compra',
+        'El abono no puede ser mayor que el total pendiente después del saldo a favor',
       );
     }
 
@@ -153,7 +205,8 @@ export class PurchasesService {
           subtotal,
           discount: descuento,
           discountReason: dto.discountReason?.trim() || null,
-          total,
+          creditsApplied: creditTotal,
+          total: totalAfterCredits,
           paidAmount: abono ?? new Prisma.Decimal(0),
         },
       });
@@ -213,6 +266,31 @@ export class PurchasesService {
         });
       }
 
+      for (const application of creditApplications) {
+        const amount = money(application.amount);
+        const actualizada = await tx.supplierCredit.updateMany({
+          where: {
+            id: application.creditId,
+            businessId,
+            supplierId: supplierForCredits,
+            remainingAmount: { gte: amount },
+          },
+          data: { remainingAmount: { decrement: amount } },
+        });
+        if (actualizada.count !== 1) {
+          throw new BadRequestException(
+            'El saldo a favor ya no está disponible o pertenece a otro proveedor',
+          );
+        }
+        await tx.supplierCreditApplication.create({
+          data: {
+            supplierCreditId: application.creditId,
+            purchaseId: creada.id,
+            amount,
+          },
+        });
+      }
+
       // El pedido llego: queda ligado a esta compra y ya no se edita.
       if (pedido) {
         await tx.purchaseOrder.update({
@@ -262,8 +340,14 @@ export class PurchasesService {
     const compra = await this.findOne(businessId, purchaseId);
     const pagos = dto.payments ?? [];
     const descuento = money(dto.discount ?? 0);
-    if (!pagos.length && descuento.isZero()) {
-      throw new BadRequestException('Registra al menos un abono o un descuento');
+    const aplicaciones = dto.supplierCredits ?? [];
+    const credito = sumDecimals(
+      aplicaciones.map((application) => money(application.amount)),
+    );
+    if (!pagos.length && descuento.isZero() && credito.isZero()) {
+      throw new BadRequestException(
+        'Registra un abono, descuento o saldo a favor',
+      );
     }
     if (pagos.some((pago) => pago.paymentMethod === 'CREDIT')) {
       throw new BadRequestException('Un abono no se puede fiar: di con qué pagaste');
@@ -278,9 +362,20 @@ export class PurchasesService {
         `El descuento supera lo que queda por pagar (${saldo.toFixed(2)})`,
       );
     }
-    if (total.greaterThan(saldoTrasDescuento)) {
+    if (credito.greaterThan(saldoTrasDescuento)) {
       throw new BadRequestException(
-        `El abono supera lo que queda por pagar después del descuento (${saldoTrasDescuento.toFixed(2)})`,
+        'El saldo a favor supera lo que queda por pagar después del descuento',
+      );
+    }
+    const saldoTrasCreditos = saldoTrasDescuento.minus(credito);
+    if (total.greaterThan(saldoTrasCreditos)) {
+      throw new BadRequestException(
+        `El abono supera lo que queda por pagar después de los descuentos y créditos (${saldoTrasCreditos.toFixed(2)})`,
+      );
+    }
+    if (aplicaciones.length && !compra.supplier?.id) {
+      throw new BadRequestException(
+        'Esta compra no tiene proveedor al que aplicar el saldo a favor',
       );
     }
 
@@ -303,6 +398,8 @@ export class PurchasesService {
         where: { id: purchaseId },
         data: {
           paidAmount: { increment: total },
+          total: { decrement: credito },
+          creditsApplied: { increment: credito },
           ...(descuento.greaterThan(0)
             ? {
                 discount: { increment: descuento },
@@ -317,6 +414,31 @@ export class PurchasesService {
             : {}),
         },
       });
+
+      for (const application of aplicaciones) {
+        const amount = money(application.amount);
+        const actualizada = await tx.supplierCredit.updateMany({
+          where: {
+            id: application.creditId,
+            businessId,
+            supplierId: compra.supplier!.id,
+            remainingAmount: { gte: amount },
+          },
+          data: { remainingAmount: { decrement: amount } },
+        });
+        if (actualizada.count !== 1) {
+          throw new BadRequestException(
+            'El saldo a favor ya no está disponible o pertenece a otro proveedor',
+          );
+        }
+        await tx.supplierCreditApplication.create({
+          data: {
+            supplierCreditId: application.creditId,
+            purchaseId,
+            amount,
+          },
+        });
+      }
     });
 
     return this.findOne(businessId, purchaseId);
@@ -412,6 +534,15 @@ export class PurchasesService {
     );
 
     await this.prisma.$transaction(async (tx) => {
+      const creditApplications = await tx.supplierCreditApplication.findMany({
+        where: { purchaseId: id },
+      });
+      for (const application of creditApplications) {
+        await tx.supplierCredit.update({
+          where: { id: application.supplierCreditId },
+          data: { remainingAmount: { increment: application.amount } },
+        });
+      }
       for (const [productId, sale] of porProducto) {
         const producto = productos.get(productId)!;
         await tx.product.update({
@@ -489,11 +620,17 @@ export class PurchasesService {
     });
     const hoy = parseBusinessDate(todayInTimezone(business.timezone));
 
-    const pendientes = await this.prisma.purchase.findMany({
-      where: { businessId },
-      include: { supplier: { select: { id: true, name: true } } },
-      orderBy: [{ dueDate: 'asc' }, { date: 'asc' }],
-    });
+    const [pendientes, creditos] = await Promise.all([
+      this.prisma.purchase.findMany({
+        where: { businessId },
+        include: { supplier: { select: { id: true, name: true } } },
+        orderBy: [{ dueDate: 'asc' }, { date: 'asc' }],
+      }),
+      this.prisma.supplierCredit.findMany({
+        where: { businessId, remainingAmount: { gt: 0 } },
+        include: { supplier: { select: { name: true } } },
+      }),
+    ]);
 
     const conSaldo = pendientes.filter((compra) =>
       toDecimal(compra.total).greaterThan(toDecimal(compra.paidAmount)),
@@ -523,17 +660,38 @@ export class PurchasesService {
       }
     }
 
+    const creditosPorProveedor = new Map<string, Prisma.Decimal>();
+    for (const credito of creditos) {
+      const actual = creditosPorProveedor.get(credito.supplierId) ?? new Prisma.Decimal(0);
+      creditosPorProveedor.set(
+        credito.supplierId,
+        actual.plus(toDecimal(credito.remainingAmount)),
+      );
+      if (!porProveedor.has(credito.supplierId)) {
+        porProveedor.set(credito.supplierId, {
+          supplierId: credito.supplierId,
+          name: credito.supplier.name,
+          balance: new Prisma.Decimal(0),
+          count: 0,
+        });
+      }
+    }
     const total = sumDecimals([...porProveedor.values()].map((p) => p.balance));
+    const availableCredit = sumDecimals([...creditosPorProveedor.values()]);
 
     return {
       total: total.toFixed(2),
       overdue: money(vencido).toFixed(2),
+      availableCredit: money(availableCredit).toFixed(2),
       purchasesCount: conSaldo.length,
       bySupplier: [...porProveedor.values()]
         .map((proveedor) => ({
           supplierId: proveedor.supplierId,
           name: proveedor.name,
           balance: money(proveedor.balance).toFixed(2),
+          availableCredit: money(
+            creditosPorProveedor.get(proveedor.supplierId ?? '') ?? 0,
+          ).toFixed(2),
           purchasesCount: proveedor.count,
         }))
         .sort((a, b) => Number(b.balance) - Number(a.balance)),

@@ -375,6 +375,8 @@ export interface SupplierStatement {
     closingBalance: string;
     /** Lo que se le debe hoy, sea del periodo que sea. */
     currentBalance: string;
+    /** Saldo a favor disponible para aplicar en otra compra. */
+    availableCredit: string;
     overdue: string;
     purchasesCount: number;
     paymentsCount: number;
@@ -520,7 +522,9 @@ export interface Purchase {
   /** Lo que el proveedor restó del total. No cambia el costo de los productos. */
   discount: string;
   discountReason: string | null;
-  /** subtotal − discount: lo que se le debe al proveedor. */
+  /** Crédito a favor de pérdidas aplicado a la compra. */
+  creditsApplied: string;
+  /** Subtotal − descuento − crédito aplicado. */
   total: string;
   paidAmount: string;
   /** Lo que queda por pagar. */
@@ -537,11 +541,13 @@ export interface Purchase {
 export interface SupplierDebt {
   total: string;
   overdue: string;
+  availableCredit: string;
   purchasesCount: number;
   bySupplier: {
     supplierId: string | null;
     name: string;
     balance: string;
+    availableCredit: string;
     purchasesCount: number;
   }[];
 }
@@ -612,7 +618,13 @@ export const LOSS_REASON_LABELS: Record<LossReason, string> = {
 };
 
 /** Qué hizo el proveedor con la mercancía dañada. */
-export type LossResolution = 'PENDING' | 'FREE' | 'DISCOUNTED' | 'NONE' | 'REFUNDED';
+export type LossResolution =
+  | 'PENDING'
+  | 'FREE'
+  | 'DISCOUNTED'
+  | 'NONE'
+  | 'REFUNDED'
+  | 'SUPPLIER_CREDIT';
 
 export const LOSS_RESOLUTIONS: {
   value: LossResolution;
@@ -644,6 +656,11 @@ export const LOSS_RESOLUTIONS: {
     label: 'Devuelve el dinero',
     hint: 'Te devuelve en dinero lo que te costó la mercancía',
   },
+  {
+    value: 'SUPPLIER_CREDIT',
+    label: 'Saldo a favor',
+    hint: 'Se guarda para descontarlo de una compra futura',
+  },
 ];
 
 export const LOSS_RESOLUTION_LABELS: Record<LossResolution, string> = {
@@ -652,6 +669,7 @@ export const LOSS_RESOLUTION_LABELS: Record<LossResolution, string> = {
   DISCOUNTED: 'Repuesta con cobro',
   NONE: 'Pérdida total',
   REFUNDED: 'Devuelve el dinero',
+  SUPPLIER_CREDIT: 'Saldo a favor',
 };
 
 export interface StockLoss {
@@ -664,6 +682,11 @@ export interface StockLoss {
   resolution: LossResolution;
   replacementUnitCost: string;
   refundAmount: string;
+  supplierCredit: {
+    id: string;
+    amount: string;
+    remainingAmount: string;
+  } | null;
   paymentMethod: PaymentMethod | null;
   /** Lo que el negocio pierde de verdad con este caso. */
   lossAmount: string;
@@ -671,6 +694,14 @@ export interface StockLoss {
   notes: string | null;
   product: { id: string; name: string; unit: string };
   supplier: { id: string; name: string } | null;
+}
+
+export interface SupplierCredit {
+  id: string;
+  date: string;
+  amount: string;
+  remainingAmount: string;
+  description: string;
 }
 
 export interface LossSummary {

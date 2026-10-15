@@ -303,6 +303,7 @@ export class ExcelRenderer {
     for (const [etiqueta, valor] of [
       ['Le debes', resumen.currentBalance],
       ['De eso, ya vencido', resumen.overdue],
+      ['Saldo a favor disponible', resumen.availableCredit],
     ] as const) {
       hoja.addRow([etiqueta, Number(valor)]).getCell(2).numFmt = formato;
     }

@@ -172,6 +172,10 @@ export function LossFormDialog({
       setError('Si el proveedor cobra por la reposición, escribe cuánto cobra por unidad');
       return;
     }
+    if (respuesta === 'SUPPLIER_CREDIT' && !proveedorId) {
+      setError('Elige el proveedor al que corresponde el saldo a favor');
+      return;
+    }
 
     const datos: LossPayload = {
       productId,
@@ -352,7 +356,9 @@ export function LossFormDialog({
                   ? 'Pierdes lo que te costó esa mercancía, no lo que ibas a cobrar por ella.'
                   : respuesta === 'REFUNDED'
                     ? `El proveedor te devuelve ${formatMoney(unidades * costoUnitario, currency)}: no pierdes el costo de la mercancía.`
-                  : 'Mientras el proveedor no conteste se cuenta como pérdida total; al anotar su respuesta se corrige.'}
+                      : respuesta === 'SUPPLIER_CREDIT'
+                        ? `Quedan ${formatMoney(unidades * costoUnitario, currency)} a favor con el proveedor para aplicar a una compra.`
+                    : 'Mientras el proveedor no conteste se cuenta como pérdida total; al anotar su respuesta se corrige.'}
           </p>
           {producto && (
             <p className="mt-1 text-xs text-slate-400">

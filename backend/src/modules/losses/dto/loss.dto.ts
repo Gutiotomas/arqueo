@@ -97,6 +97,14 @@ export class ResolveLossDto {
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod;
 
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Proveedor al que pertenece el saldo a favor',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  supplierId?: string;
+
   @ApiPropertyOptional({ example: '2026-09-22' })
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'resolvedAt debe tener formato YYYY-MM-DD' })
