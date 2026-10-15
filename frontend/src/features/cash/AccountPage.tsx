@@ -585,7 +585,7 @@ function SaldoDeHoy({
     // suman solas.
     const m = resumen.data?.sinceLastClosing;
     const entradas = m
-      ? toNumber(m.transferSales) + toNumber(m.cardSales) - toNumber(m.cardFees) + toNumber(m.collections) + toNumber(m.cashDeposits) + toNumber(m.otherIn)
+      ? toNumber(m.transferSales) + toNumber(m.cardSales) - toNumber(m.cardFees) + toNumber(m.collections) + toNumber(m.supplierRefunds) + toNumber(m.cashDeposits) + toNumber(m.otherIn)
       : 0;
     const salidas = m
       ? toNumber(m.expenses) + toNumber(m.supplierPayments) + toNumber(m.cashWithdrawals) + toNumber(m.otherOut) + toNumber(m.partnerWithdrawals)
@@ -687,6 +687,14 @@ function DesgloseCuenta({
       etiqueta: 'Otros ingresos',
       detalle: 'Aportes, préstamos...',
       valor: `+ ${formatMoney(m.otherIn, currency)}`,
+    },
+    {
+      mostrar: toNumber(m.supplierRefunds) > 0,
+      icono: <HandCoins className="h-4 w-4" />,
+      tono: 'verde' as const,
+      etiqueta: 'Devoluciones de proveedores',
+      detalle: contar(m.supplierRefundsCount, 'devolución', 'devoluciones'),
+      valor: `+ ${formatMoney(m.supplierRefunds, currency)}`,
     },
     {
       mostrar: toNumber(m.supplierPayments) > 0,

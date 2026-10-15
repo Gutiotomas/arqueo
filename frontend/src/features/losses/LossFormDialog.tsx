@@ -73,18 +73,24 @@ export function RespuestaDelProveedor({
         ))}
       </div>
 
-      {valor === 'DISCOUNTED' && (
+      {(valor === 'DISCOUNTED' || valor === 'REFUNDED') && (
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <Field label="Cuánto te cobra por unidad">
-            <MoneyInput
-              aria-label="Costo de la reposición por unidad"
-              value={costoReposicion}
-              onValueChange={onCostoReposicionChange}
-            />
-          </Field>
+          {valor === 'DISCOUNTED' && (
+            <Field label="Cuánto te cobra por unidad">
+              <MoneyInput
+                aria-label="Costo de la reposición por unidad"
+                value={costoReposicion}
+                onValueChange={onCostoReposicionChange}
+              />
+            </Field>
+          )}
           <Field
-            label="Cómo lo pagas"
-            hint="En efectivo sale de la caja de ese día."
+            label={valor === 'REFUNDED' ? 'Dónde recibes la devolución' : 'Cómo lo pagas'}
+            hint={
+              valor === 'REFUNDED'
+                ? 'El dinero entrará a la caja o a la cuenta en la fecha de respuesta.'
+                : 'En efectivo sale de la caja de ese día.'
+            }
           >
             <Select
               value={formaDePago}
@@ -179,6 +185,7 @@ export function LossFormDialog({
             paymentMethod: formaDePago,
           }
         : {}),
+      ...(respuesta === 'REFUNDED' ? { paymentMethod: formaDePago } : {}),
       ...(proveedorId ? { supplierId: proveedorId } : {}),
       ...(notas.trim() ? { notes: notas.trim() } : {}),
     };
@@ -200,7 +207,7 @@ export function LossFormDialog({
       onOpenChange={onOpenChange}
       size="lg"
       title="Registrar pérdida"
-      description="La mercancía sale del inventario siempre. Lo que pierdes depende del proveedor."
+      description="La mercancía dañada sale del inventario; puedes registrar si el proveedor la repone o te devuelve su costo."
       footer={
         <>
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
@@ -343,6 +350,8 @@ export function LossFormDialog({
                 ? 'Solo pierdes lo que te toca pagar por la reposición.'
                 : respuesta === 'NONE'
                   ? 'Pierdes lo que te costó esa mercancía, no lo que ibas a cobrar por ella.'
+                  : respuesta === 'REFUNDED'
+                    ? `El proveedor te devuelve ${formatMoney(unidades * costoUnitario, currency)}: no pierdes el costo de la mercancía.`
                   : 'Mientras el proveedor no conteste se cuenta como pérdida total; al anotar su respuesta se corrige.'}
           </p>
           {producto && (

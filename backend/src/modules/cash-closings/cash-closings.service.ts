@@ -58,7 +58,18 @@ export class CashClosingsService {
   async preview(businessId: string, date: string, openingCash?: number) {
     const day = parseBusinessDate(date);
 
-    const [ventas, cobros, gastos, abonos, reposiciones, cuenta, repartos, existente, anterior] =
+    const [
+      ventas,
+      cobros,
+      gastos,
+      abonos,
+      reposiciones,
+      devoluciones,
+      cuenta,
+      repartos,
+      existente,
+      anterior,
+    ] =
       await Promise.all([
       // Cada linea de venta tiene su forma de pago: se suman las de efectivo.
       this.prisma.saleItem.aggregate({
@@ -95,6 +106,16 @@ export class CashClosingsService {
         },
         _sum: { lossAmount: true },
       }),
+      this.prisma.stockLoss.aggregate({
+        where: {
+          businessId,
+          resolvedAt: day,
+          resolution: 'REFUNDED',
+          paymentMethod: 'CASH',
+        },
+        _sum: { refundAmount: true },
+        _count: true,
+      }),
       // El efectivo que se consigna sale de la caja; el que se saca del banco
       // para la caja, entra.
       this.prisma.accountMovement.groupBy({
@@ -129,6 +150,7 @@ export class CashClosingsService {
     const cashSupplierPayments = (abonos._sum.amount ?? new Prisma.Decimal(0)).plus(
       reposiciones._sum.lossAmount ?? 0,
     );
+    const cashSupplierRefunds = devoluciones._sum.refundAmount ?? new Prisma.Decimal(0);
     const deCuenta = (tipo: 'CASH_DEPOSIT' | 'CASH_WITHDRAWAL') =>
       cuenta.find((fila) => fila.type === tipo)?._sum.amount ?? new Prisma.Decimal(0);
     const depositedToAccount = deCuenta('CASH_DEPOSIT');
@@ -142,6 +164,7 @@ export class CashClosingsService {
       opening
         .plus(cashSales)
         .plus(cashCollections)
+        .plus(cashSupplierRefunds)
         .minus(cashExpenses)
         .minus(cashSupplierPayments)
         .minus(depositedToAccount)
@@ -166,6 +189,8 @@ export class CashClosingsService {
       cashExpensesCount: gastos._count,
       cashSupplierPayments: cashSupplierPayments.toFixed(2),
       cashSupplierPaymentsCount: abonos._count,
+      cashSupplierRefunds: cashSupplierRefunds.toFixed(2),
+      cashSupplierRefundsCount: devoluciones._count,
       /** Efectivo consignado en la cuenta ese dia. */
       depositedToAccount: depositedToAccount.toFixed(2),
       /** Dinero sacado de la cuenta para la caja ese dia. */

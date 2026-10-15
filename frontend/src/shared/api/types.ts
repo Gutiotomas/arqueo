@@ -195,6 +195,9 @@ export interface CashPreview {
   /** Abonos a proveedores y reposiciones pagadas, en efectivo. */
   cashSupplierPayments: string;
   cashSupplierPaymentsCount: number;
+  /** Dinero devuelto por proveedores y recibido en efectivo. */
+  cashSupplierRefunds: string;
+  cashSupplierRefundsCount: number;
   /** Efectivo consignado en la cuenta ese día. */
   depositedToAccount: string;
   /** Dinero sacado de la cuenta para la caja ese día. */
@@ -245,6 +248,8 @@ export interface AccountFlows {
   expensesCount: number;
   supplierPayments: string;
   supplierPaymentsCount: number;
+  supplierRefunds: string;
+  supplierRefundsCount: number;
   cashDeposits: string;
   cashWithdrawals: string;
   otherIn: string;
@@ -607,7 +612,7 @@ export const LOSS_REASON_LABELS: Record<LossReason, string> = {
 };
 
 /** Qué hizo el proveedor con la mercancía dañada. */
-export type LossResolution = 'PENDING' | 'FREE' | 'DISCOUNTED' | 'NONE';
+export type LossResolution = 'PENDING' | 'FREE' | 'DISCOUNTED' | 'NONE' | 'REFUNDED';
 
 export const LOSS_RESOLUTIONS: {
   value: LossResolution;
@@ -634,6 +639,11 @@ export const LOSS_RESOLUTIONS: {
     label: 'No la repone',
     hint: 'Pierdes todo lo que te costó esa mercancía',
   },
+  {
+    value: 'REFUNDED',
+    label: 'Devuelve el dinero',
+    hint: 'Te devuelve en dinero lo que te costó la mercancía',
+  },
 ];
 
 export const LOSS_RESOLUTION_LABELS: Record<LossResolution, string> = {
@@ -641,6 +651,7 @@ export const LOSS_RESOLUTION_LABELS: Record<LossResolution, string> = {
   FREE: 'Repuesta gratis',
   DISCOUNTED: 'Repuesta con cobro',
   NONE: 'Pérdida total',
+  REFUNDED: 'Devuelve el dinero',
 };
 
 export interface StockLoss {
@@ -652,6 +663,7 @@ export interface StockLoss {
   reason: LossReason;
   resolution: LossResolution;
   replacementUnitCost: string;
+  refundAmount: string;
   paymentMethod: PaymentMethod | null;
   /** Lo que el negocio pierde de verdad con este caso. */
   lossAmount: string;

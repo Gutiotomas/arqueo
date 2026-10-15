@@ -36,6 +36,7 @@ const TONO_RESPUESTA: Record<LossResolution, 'warning' | 'success' | 'info' | 'd
     FREE: 'success',
     DISCOUNTED: 'info',
     NONE: 'danger',
+    REFUNDED: 'success',
   };
 
 function filtrosIniciales(): LossFilters {
@@ -53,13 +54,21 @@ function filtrosIniciales(): LossFilters {
 function LoPerdido({ perdida }: { perdida: StockLoss }) {
   const { currency } = useAuth();
   const importe = toNumber(perdida.lossAmount);
+  const devuelto = toNumber(perdida.refundAmount);
 
   return importe > 0 ? (
     <span className="tabular font-semibold text-red-700">
       {formatMoney(importe, currency)}
     </span>
   ) : (
-    <span className="font-semibold text-emerald-700">Sin pérdida</span>
+    <span className="font-semibold text-emerald-700">
+      Sin pérdida
+      {devuelto > 0 && (
+        <span className="block tabular text-xs font-normal">
+          Devuelto: {formatMoney(devuelto, currency)}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -332,6 +341,14 @@ export function LossesPage() {
                           currency,
                         ),
                       },
+                      ...(toNumber(perdida.refundAmount) > 0
+                        ? [
+                            {
+                              label: 'Te devolvió el proveedor',
+                              value: formatMoney(perdida.refundAmount, currency),
+                            },
+                          ]
+                        : []),
                     ]}
                     actions={acciones(perdida)}
                   />

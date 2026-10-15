@@ -289,4 +289,60 @@ describe('Mercancía dañada (e2e)', () => {
       'THEFT',
     );
   });
+
+  it('el proveedor puede devolver el costo y ese dinero entra a caja o cuenta', async () => {
+    const antesCaja = await como(
+      http().get(`/api/v1/cash-closings/preview?date=${hoy}&openingCash=0`),
+    ).expect(200);
+
+    const efectivo = await como(
+      http().post('/api/v1/losses').send({
+        productId: productoId,
+        date: hoy,
+        quantity: 1,
+        reason: 'DAMAGED',
+      }),
+    ).expect(201);
+    const resueltaEfectivo = await como(
+      http()
+        .patch(`/api/v1/losses/${efectivo.body.id}/resolve`)
+        .send({ resolution: 'REFUNDED', paymentMethod: 'CASH', resolvedAt: hoy }),
+    ).expect(200);
+
+    expect(resueltaEfectivo.body.lossAmount).toBe('0');
+    expect(resueltaEfectivo.body.refundAmount).toBe('1000');
+    expect(resueltaEfectivo.body.paymentMethod).toBe('CASH');
+
+    const despuesCaja = await como(
+      http().get(`/api/v1/cash-closings/preview?date=${hoy}&openingCash=0`),
+    ).expect(200);
+    expect(despuesCaja.body.cashSupplierRefunds).toBe('1000.00');
+    expect(Number(despuesCaja.body.expectedCash) - Number(antesCaja.body.expectedCash)).toBe(1000);
+
+    const porCuenta = await como(
+      http().post('/api/v1/losses').send({
+        productId: productoId,
+        date: hoy,
+        quantity: 1,
+        reason: 'DAMAGED',
+        resolution: 'REFUNDED',
+        paymentMethod: 'TRANSFER',
+      }),
+    ).expect(201);
+    expect(porCuenta.body.refundAmount).toBe('1000');
+
+    const cuenta = await como(http().get('/api/v1/bank-account/summary')).expect(200);
+    expect(cuenta.body.sinceLastClosing.supplierRefunds).toBe('1000.00');
+
+    const sinMetodo = await como(
+      http().post('/api/v1/losses').send({
+        productId: productoId,
+        date: hoy,
+        quantity: 1,
+        reason: 'DAMAGED',
+        resolution: 'REFUNDED',
+      }),
+    ).expect(400);
+    expect(sinMetodo.body.message).toMatch(/dónde recibiste/i);
+  });
 });

@@ -80,6 +80,7 @@ export function ResolveLossDialog({
             paymentMethod: formaDePago,
           }
         : {}),
+      ...(respuesta === 'REFUNDED' ? { paymentMethod: formaDePago } : {}),
       ...(respuesta === 'PENDING' ? {} : { resolvedAt: fechaRespuesta }),
       notes: notas.trim(),
     };
@@ -129,6 +130,14 @@ export function ResolveLossDialog({
               {formatMoney(unidades * costoUnitario, currency)}
             </span>
           </div>
+          {respuesta === 'REFUNDED' && (
+            <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-slate-200 pt-2">
+              <span className="text-sm text-emerald-700">Te devuelve el proveedor</span>
+              <span className="tabular text-lg font-bold text-emerald-700">
+                {formatMoney(unidades * costoUnitario, currency)}
+              </span>
+            </div>
+          )}
           {perdida.notes && (
             <p className="mt-2 border-t border-slate-200 pt-2 text-xs text-slate-500">
               {perdida.notes}
@@ -206,6 +215,8 @@ export function ResolveLossDialog({
                 ? 'La mercancía vuelve al inventario y solo pierdes lo que pagas por la reposición.'
                 : respuesta === 'NONE'
                   ? 'No vuelve nada al inventario: pierdes todo lo que te costó.'
+                  : respuesta === 'REFUNDED'
+                    ? 'No vuelve mercancía al inventario: el proveedor te devuelve en dinero el costo de lo dañado.'
                   : 'Hasta que conteste se cuenta como pérdida total.'}
           </p>
         </div>

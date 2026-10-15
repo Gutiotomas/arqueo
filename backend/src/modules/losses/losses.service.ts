@@ -96,6 +96,9 @@ export class LossesService {
     const costoUnitario = money(producto.costPrice);
     const resolution = dto.resolution ?? 'PENDING';
     const costoReposicion = money(dto.replacementUnitCost ?? 0);
+    const devolucion = resolution === 'REFUNDED'
+      ? money(cantidad.times(costoUnitario))
+      : money(0);
 
     this.validarRespuesta(resolution, costoReposicion, dto.paymentMethod);
 
@@ -112,6 +115,7 @@ export class LossesService {
           reason: dto.reason,
           resolution,
           replacementUnitCost: costoReposicion,
+          refundAmount: devolucion,
           paymentMethod: dto.paymentMethod ?? null,
           lossAmount: this.calcularPerdida(
             resolution,
@@ -163,6 +167,10 @@ export class LossesService {
       dto.replacementUnitCost ?? toDecimal(perdida.replacementUnitCost),
     );
     const metodo = dto.paymentMethod ?? perdida.paymentMethod ?? undefined;
+    const devolucion =
+      dto.resolution === 'REFUNDED'
+        ? money(cantidad.times(toDecimal(perdida.unitCost)))
+        : money(0);
 
     this.validarRespuesta(dto.resolution, costoReposicion, metodo);
 
@@ -202,7 +210,9 @@ export class LossesService {
         data: {
           resolution: dto.resolution,
           replacementUnitCost: cobra ? costoReposicion : new Prisma.Decimal(0),
-          paymentMethod: cobra ? (metodo ?? null) : null,
+          refundAmount: devolucion,
+          paymentMethod:
+            cobra || dto.resolution === 'REFUNDED' ? (metodo ?? null) : null,
           lossAmount: this.calcularPerdida(
             dto.resolution,
             cantidad,
@@ -313,6 +323,7 @@ export class LossesService {
   ): Prisma.Decimal {
     switch (resolution) {
       case 'FREE':
+      case 'REFUNDED':
         return new Prisma.Decimal(0);
       case 'DISCOUNTED':
         return money(cantidad.times(costoReposicion));
@@ -338,6 +349,11 @@ export class LossesService {
           'Indica cómo se paga la reposición que cobra el proveedor',
         );
       }
+    }
+    if (resolution === 'REFUNDED' && !paymentMethod) {
+      throw new BadRequestException(
+        'Indica dónde recibiste la devolución del proveedor',
+      );
     }
   }
 

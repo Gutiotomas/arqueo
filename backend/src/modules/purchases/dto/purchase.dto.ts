@@ -61,12 +61,32 @@ export class PurchasePaymentDto {
 
 /** Varios pagos de una vez: parte en efectivo, parte de la cuenta. */
 export class PurchasePaymentsDto {
-  @ApiProperty({ type: [PurchasePaymentDto] })
+  @ApiPropertyOptional({
+    type: [PurchasePaymentDto],
+    description: 'Abonos opcionales si solo se va a registrar un descuento',
+  })
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1, { message: 'Hace falta al menos un pago' })
+  @ArrayMinSize(1, { message: 'Si mandas pagos, hace falta al menos uno' })
   @ValidateNested({ each: true })
   @Type(() => PurchasePaymentDto)
-  payments!: PurchasePaymentDto[];
+  payments?: PurchasePaymentDto[];
+
+  @ApiPropertyOptional({
+    example: 12000,
+    description: 'Nuevo descuento que el proveedor reconoce sobre esta compra',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01, { message: 'El descuento debe ser mayor que cero' })
+  discount?: number;
+
+  @ApiPropertyOptional({ example: 'Producto defectuoso' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  discountReason?: string;
 }
 
 export class CreatePurchaseDto {

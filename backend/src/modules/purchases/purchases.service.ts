@@ -260,21 +260,32 @@ export class PurchasesService {
     dto: PurchasePaymentsDto,
   ) {
     const compra = await this.findOne(businessId, purchaseId);
-    if (dto.payments.some((pago) => pago.paymentMethod === 'CREDIT')) {
+    const pagos = dto.payments ?? [];
+    const descuento = money(dto.discount ?? 0);
+    if (!pagos.length && descuento.isZero()) {
+      throw new BadRequestException('Registra al menos un abono o un descuento');
+    }
+    if (pagos.some((pago) => pago.paymentMethod === 'CREDIT')) {
       throw new BadRequestException('Un abono no se puede fiar: di con qué pagaste');
     }
-    const abonos = dto.payments.map((pago) => money(pago.amount));
+    const abonos = pagos.map((pago) => money(pago.amount));
     const total = sumDecimals(abonos);
     const saldo = toDecimal(compra.balance);
+    const saldoTrasDescuento = saldo.minus(descuento);
 
-    if (total.greaterThan(saldo)) {
+    if (descuento.greaterThan(saldo)) {
       throw new BadRequestException(
-        `El abono supera lo que queda por pagar (${saldo.toFixed(2)})`,
+        `El descuento supera lo que queda por pagar (${saldo.toFixed(2)})`,
+      );
+    }
+    if (total.greaterThan(saldoTrasDescuento)) {
+      throw new BadRequestException(
+        `El abono supera lo que queda por pagar después del descuento (${saldoTrasDescuento.toFixed(2)})`,
       );
     }
 
     await this.prisma.$transaction(async (tx) => {
-      for (const [indice, pago] of dto.payments.entries()) {
+      for (const [indice, pago] of pagos.entries()) {
         await tx.purchasePayment.create({
           data: {
             businessId,
@@ -290,7 +301,21 @@ export class PurchasesService {
 
       await tx.purchase.update({
         where: { id: purchaseId },
-        data: { paidAmount: { increment: total } },
+        data: {
+          paidAmount: { increment: total },
+          ...(descuento.greaterThan(0)
+            ? {
+                discount: { increment: descuento },
+                total: { decrement: descuento },
+                discountReason: dto.discountReason?.trim()
+                  ? [compra.discountReason, dto.discountReason.trim()]
+                      .filter(Boolean)
+                      .join('; ')
+                      .slice(0, 200)
+                  : compra.discountReason,
+              }
+            : {}),
+        },
       });
     });
 
@@ -600,4 +625,3 @@ export class PurchasesService {
     return null;
   }
 }
-

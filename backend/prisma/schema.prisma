@@ -568,7 +568,8 @@ enum LossResolution {
   PENDING // aun no sabes que va a hacer el proveedor
   FREE // la repuso sin cobrar
   DISCOUNTED // la repuso cobrando menos de lo que vale
-  NONE // no la repone: perdida total
+  NONE // no la repone
+  REFUNDED // devuelve en dinero el costo de la mercancia: perdida total
 }
 
 model StockLoss {
@@ -588,6 +589,8 @@ model StockLoss {
   resolution          LossResolution @default(PENDING)
   /// Lo que cobra el proveedor por unidad repuesta (0 si la repone gratis).
   replacementUnitCost Decimal        @default(0) @map("replacement_unit_cost") @db.Decimal(14, 2)
+  /// Dinero que devolvio el proveedor por la mercancia dañada.
+  refundAmount        Decimal        @default(0) @map("refund_amount") @db.Decimal(14, 2)
   /// Como se pago esa reposicion, si hubo que pagarla.
   paymentMethod       PaymentMethod? @map("payment_method")
   /// Dinero que el negocio pierde de verdad con este caso.

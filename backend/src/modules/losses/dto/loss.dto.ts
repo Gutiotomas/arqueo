@@ -56,7 +56,10 @@ export class CreateLossDto {
   @Min(0)
   replacementUnitCost?: number;
 
-  @ApiPropertyOptional({ enum: PaymentMethod })
+  @ApiPropertyOptional({
+    enum: PaymentMethod,
+    description: 'Método de pago de la reposición o de la devolución en dinero',
+  })
   @IsOptional()
   @IsEnum(PaymentMethod, { message: 'Método de pago inválido' })
   paymentMethod?: PaymentMethod;
@@ -86,7 +89,10 @@ export class ResolveLossDto {
   @Min(0)
   replacementUnitCost?: number;
 
-  @ApiPropertyOptional({ enum: PaymentMethod })
+  @ApiPropertyOptional({
+    enum: PaymentMethod,
+    description: 'Método de pago de la reposición o de la devolución en dinero',
+  })
   @IsOptional()
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod;

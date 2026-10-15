@@ -1,0 +1,4 @@
+ALTER TYPE "LossResolution" ADD VALUE 'REFUNDED';
+
+ALTER TABLE "stock_losses"
+ADD COLUMN "refund_amount" DECIMAL(14,2) NOT NULL DEFAULT 0;

@@ -59,7 +59,7 @@ export function calcularPerdida(
   costoUnitario: number,
   costoReposicion: number,
 ): number {
-  if (resolution === 'FREE') return 0;
+  if (resolution === 'FREE' || resolution === 'REFUNDED') return 0;
   if (resolution === 'DISCOUNTED') return cantidad * costoReposicion;
   // Sin respuesta todavía se asume lo peor: se pierde toda la mercancía.
   return cantidad * costoUnitario;

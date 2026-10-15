@@ -281,6 +281,7 @@ export class BankAccountService {
       gastos,
       abonos,
       reposiciones,
+      devoluciones,
       movimientos,
       repartos,
     ] =
@@ -327,6 +328,16 @@ export class BankAccountService {
           _sum: { lossAmount: true },
           _count: true,
         }),
+        this.prisma.stockLoss.aggregate({
+          where: {
+            businessId,
+            resolvedAt: fechas,
+            resolution: 'REFUNDED',
+            paymentMethod: { in: MEDIOS_DE_CUENTA },
+          },
+          _sum: { refundAmount: true },
+          _count: true,
+        }),
         this.prisma.accountMovement.groupBy({
           by: ['type'],
           where: { businessId, date: fechas },
@@ -360,6 +371,8 @@ export class BankAccountService {
         reposiciones._sum.lossAmount ?? CERO,
       ),
       supplierPaymentsCount: abonos._count + reposiciones._count,
+      supplierRefunds: devoluciones._sum.refundAmount ?? CERO,
+      supplierRefundsCount: devoluciones._count,
       cashDeposits: porTipo.get('CASH_DEPOSIT') ?? CERO,
       cashWithdrawals: porTipo.get('CASH_WITHDRAWAL') ?? CERO,
       otherIn: porTipo.get('OTHER_IN') ?? CERO,
@@ -372,6 +385,7 @@ export class BankAccountService {
         .plus(flujos.cardSales)
         .minus(flujos.cardFees)
         .plus(flujos.collections)
+        .plus(flujos.supplierRefunds)
         .plus(flujos.cashDeposits)
         .plus(flujos.otherIn)
         .minus(flujos.expenses)
@@ -397,6 +411,8 @@ export class BankAccountService {
       expensesCount: flujos.expensesCount,
       supplierPayments: flujos.supplierPayments.toFixed(2),
       supplierPaymentsCount: flujos.supplierPaymentsCount,
+      supplierRefunds: flujos.supplierRefunds.toFixed(2),
+      supplierRefundsCount: flujos.supplierRefundsCount,
       cashDeposits: flujos.cashDeposits.toFixed(2),
       cashWithdrawals: flujos.cashWithdrawals.toFixed(2),
       otherIn: flujos.otherIn.toFixed(2),

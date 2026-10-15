@@ -8,7 +8,7 @@ import { formatDate, today } from '@/shared/lib/dates';
 import { formatMoney, toNumber } from '@/shared/lib/money';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
-import { Field, Input, Textarea } from '@/shared/ui/field';
+import { Field, Input, MoneyInput, Textarea } from '@/shared/ui/field';
 import { PartesDePago, partePago, sumaPartes, type PartePago } from '@/shared/ui/partes-de-pago';
 
 export function PaymentDialog({
@@ -26,6 +26,8 @@ export function PaymentDialog({
   const [fecha, setFecha] = useState(today());
   // "200.000 en efectivo y 300.000 de la cuenta": el abono puede ir por partes.
   const [partes, setPartes] = useState<PartePago[]>([partePago()]);
+  const [descuento, setDescuento] = useState<number | ''>('');
+  const [motivoDescuento, setMotivoDescuento] = useState('');
   const [notas, setNotas] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -36,6 +38,8 @@ export function PaymentDialog({
     if (!open) return;
     setFecha(today());
     setPartes([partePago()]);
+    setDescuento('');
+    setMotivoDescuento('');
     setNotas('');
     setError(null);
   }, [open, compra?.id]);
@@ -44,14 +48,19 @@ export function PaymentDialog({
     setError(null);
     if (!compra) return;
 
+    const nuevoDescuento = Number(descuento || 0);
     const cantidad = sumaPartes(partes);
-    if (cantidad <= 0) {
-      setError('Escribe cuánto vas a abonar');
+    if (nuevoDescuento <= 0 && cantidad <= 0) {
+      setError('Escribe cuánto vas a abonar o el descuento que te dio el proveedor');
       return;
     }
-    if (cantidad > saldo) {
+    if (nuevoDescuento > saldo) {
+      setError(`El descuento supera el saldo pendiente (${formatMoney(saldo, currency)})`);
+      return;
+    }
+    if (cantidad > saldo - nuevoDescuento) {
       setError(
-        `El abono supera el saldo pendiente (${formatMoney(saldo, currency)})`,
+        `El abono supera el saldo después del descuento (${formatMoney(saldo - nuevoDescuento, currency)})`,
       );
       return;
     }
@@ -66,7 +75,18 @@ export function PaymentDialog({
       }));
 
     try {
-      await abonar.mutateAsync({ purchaseId: compra.id, pagos });
+      await abonar.mutateAsync({
+        purchaseId: compra.id,
+        pagos,
+        ...(nuevoDescuento > 0
+          ? {
+              discount: nuevoDescuento,
+              ...(motivoDescuento.trim()
+                ? { discountReason: motivoDescuento.trim() }
+                : {}),
+            }
+          : {}),
+      });
       onOpenChange(false);
     } catch (fallo) {
       // El API sabe el saldo exacto: su mensaje manda sobre el nuestro.
@@ -76,21 +96,23 @@ export function PaymentDialog({
     }
   }
 
-  const restante = saldo - sumaPartes(partes);
+  const saldoConDescuento = saldo - Number(descuento || 0);
+  const restante = saldoConDescuento - sumaPartes(partes);
+  const puedeGuardar = Number(descuento || 0) > 0 || sumaPartes(partes) > 0;
 
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
       title="Abonar a la compra"
-      description="Paga una parte o todo lo que le debes al proveedor."
+      description="Registra un abono, un descuento del proveedor o ambos."
       footer={
         <>
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={guardar} disabled={abonar.isPending || !compra}>
-            {abonar.isPending ? 'Guardando...' : 'Registrar abono'}
+          <Button onClick={guardar} disabled={abonar.isPending || !compra || !puedeGuardar}>
+            {abonar.isPending ? 'Guardando...' : 'Guardar'}
           </Button>
         </>
       }
@@ -110,15 +132,51 @@ export function PaymentDialog({
               {formatMoney(saldo, currency)}
             </span>
           </div>
+          {Number(descuento || 0) > 0 && (
+            <div className="mt-1 flex items-baseline justify-between gap-3 text-sm text-emerald-700">
+              <span>Descuento nuevo</span>
+              <span className="tabular font-semibold">
+                − {formatMoney(descuento, currency)}
+              </span>
+            </div>
+          )}
+          <div className="mt-1 flex items-baseline justify-between gap-3 border-t border-slate-200 pt-1">
+            <span className="text-sm text-slate-600">Saldo tras el descuento</span>
+            <span className="tabular text-sm font-semibold text-slate-900">
+              {formatMoney(Math.max(saldoConDescuento, 0), currency)}
+            </span>
+          </div>
           <Button
             variant="secondary"
             size="sm"
             className="mt-2 w-full"
-            onClick={() => setPartes([partePago(saldo, partes[0]?.paymentMethod)])}
+            onClick={() =>
+              setPartes([partePago(Math.max(saldoConDescuento, 0), partes[0]?.paymentMethod)])
+            }
           >
-            Pagar todo el saldo
+            Pagar todo el saldo restante
           </Button>
         </div>
+
+        <Field label="Descuento nuevo (opcional)" hint="Lo que el proveedor te rebaja por el producto defectuoso.">
+          <MoneyInput
+            aria-label="Descuento nuevo del proveedor"
+            value={descuento}
+            onValueChange={setDescuento}
+            placeholder="0"
+          />
+        </Field>
+
+        {Number(descuento || 0) > 0 && (
+          <Field label="Motivo del descuento (opcional)">
+            <Input
+              maxLength={200}
+              value={motivoDescuento}
+              onChange={(e) => setMotivoDescuento(e.target.value)}
+              placeholder="Producto defectuoso"
+            />
+          </Field>
+        )}
 
         <Field label="Fecha del abono" className="sm:max-w-xs">
           <Input
@@ -133,7 +191,12 @@ export function PaymentDialog({
           label="Cuánto y con qué"
           hint="El efectivo sale de la caja de ese día; transferencia o tarjeta, de la cuenta."
         >
-          <PartesDePago partes={partes} onChange={setPartes} currency={currency} maximo={saldo} />
+          <PartesDePago
+            partes={partes}
+            onChange={setPartes}
+            currency={currency}
+            maximo={Math.max(saldoConDescuento, 0)}
+          />
         </Field>
 
         <Field label="Notas (opcional)">

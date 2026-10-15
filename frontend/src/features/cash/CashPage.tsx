@@ -83,6 +83,7 @@ export function CashPage() {
   const gastosEfectivo = toNumber(preview.data?.cashExpenses);
   const cobrosEfectivo = toNumber(preview.data?.cashCollections);
   const abonosEfectivo = toNumber(preview.data?.cashSupplierPayments);
+  const devolucionesEfectivo = toNumber(preview.data?.cashSupplierRefunds);
   const consignado = toNumber(preview.data?.depositedToAccount);
   const traido = toNumber(preview.data?.withdrawnFromAccount);
   const repartido = toNumber(preview.data?.partnerWithdrawals);
@@ -231,6 +232,19 @@ export function CashPage() {
                       etiqueta="Pagos a proveedores"
                       detalle="Abonos y reposiciones pagados en efectivo"
                       valor={`− ${formatMoney(abonosEfectivo, currency)}`}
+                    />
+                  )}
+                  {devolucionesEfectivo > 0 && (
+                    <LineaDesglose
+                      icono={<HandCoins className="h-4 w-4" />}
+                      tono="verde"
+                      etiqueta="Devoluciones de proveedores"
+                      detalle={contar(
+                        preview.data?.cashSupplierRefundsCount ?? 0,
+                        'devolución en efectivo',
+                        'devoluciones en efectivo',
+                      )}
+                      valor={`+ ${formatMoney(devolucionesEfectivo, currency)}`}
                     />
                   )}
                   {consignado > 0 && (

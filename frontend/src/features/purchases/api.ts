@@ -144,8 +144,21 @@ export function useAddPayment() {
 export function useAddPayments() {
   const invalidar = useInvalidarCompras();
   return useMutation({
-    mutationFn: ({ purchaseId, pagos }: { purchaseId: string; pagos: PaymentPayload[] }) =>
-      api.post<Purchase>(`/purchases/${purchaseId}/payments/split`, { payments: pagos }),
+    mutationFn: ({
+      purchaseId,
+      pagos,
+      discount,
+      discountReason,
+    }: {
+      purchaseId: string;
+      pagos: PaymentPayload[];
+      discount?: number;
+      discountReason?: string;
+    }) =>
+      api.post<Purchase>(`/purchases/${purchaseId}/payments/split`, {
+        ...(pagos.length ? { payments: pagos } : {}),
+        ...(discount ? { discount, discountReason } : {}),
+      }),
     onSuccess: invalidar,
   });
 }

@@ -249,4 +249,59 @@ describe('Pedidos a proveedor (e2e)', () => {
     const yaPendiente = await como(http().get('/api/v1/purchase-orders?status=PENDING')).expect(200);
     expect(yaPendiente.body.data.map((p: { id: string }) => p.id)).toContain(pedido.body.id);
   });
+
+  it('admite un descuento nuevo al abonar, también sin registrar un pago', async () => {
+    const compra = await como(
+      http()
+        .post('/api/v1/purchases')
+        .send({
+          date: '2026-09-15',
+          supplierName: 'Gustavo',
+          items: [{ productId: cuajadas, quantity: 2, unitCost: 10000 }],
+          initialPayment: {
+            date: '2026-09-15',
+            amount: 5000,
+            paymentMethod: 'CASH',
+          },
+        }),
+    ).expect(201);
+
+    const ajustada = await como(
+      http()
+        .post(`/api/v1/purchases/${compra.body.id}/payments/split`)
+        .send({
+          discount: 3000,
+          discountReason: 'Producto defectuoso',
+          payments: [{ date: '2026-09-16', amount: 12000, paymentMethod: 'TRANSFER' }],
+        }),
+    ).expect(201);
+    expect(ajustada.body.discount).toBe('3000');
+    expect(ajustada.body.discountReason).toBe('Producto defectuoso');
+    expect(ajustada.body.total).toBe('17000');
+    expect(ajustada.body.balance).toBe('0.00');
+
+    const sobrepago = await como(
+      http()
+        .post(`/api/v1/purchases/${compra.body.id}/payments/split`)
+        .send({ discount: 1 }),
+    ).expect(400);
+    expect(sobrepago.body.message).toMatch(/descuento supera/i);
+
+    const soloDescuentoCompra = await como(
+      http()
+        .post('/api/v1/purchases')
+        .send({
+          date: '2026-09-15',
+          supplierName: 'Gustavo',
+          items: [{ productId: cuajadas, quantity: 1, unitCost: 10000 }],
+        }),
+    ).expect(201);
+    const soloDescuento = await como(
+      http()
+        .post(`/api/v1/purchases/${soloDescuentoCompra.body.id}/payments/split`)
+        .send({ discount: 2000 }),
+    ).expect(201);
+    expect(soloDescuento.body.discount).toBe('2000');
+    expect(soloDescuento.body.balance).toBe('8000.00');
+  });
 });
