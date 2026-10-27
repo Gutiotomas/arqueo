@@ -23,7 +23,7 @@ services:
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_VERSION
-        value: '22'
+        value: '26'
       - key: NODE_ENV
         value: production
       # Pegar aqui el POSTGRESQL_ADDON_URI del addon de Clever Cloud.

@@ -46,7 +46,7 @@ a una API que ya existe.
 
 ## Arranque en local
 
-Necesitas Node 22.12 o superior y PostgreSQL 17 (`brew install postgresql@17`).
+Necesitas Node 26.12 o superior y PostgreSQL 17 (`brew install postgresql@17`).
 
 ```bash
 # 1. Base de datos (el servidor NO queda arrancando con el Mac)
@@ -334,7 +334,7 @@ valores:
 | Start Command | `npm run start:deploy` |
 | Health Check Path | `/api/v1/health` |
 
-Y en *Environment*: `NODE_VERSION=22`, `NODE_ENV=production`, `DATABASE_URL`,
+Y en *Environment*: `NODE_VERSION=26`, `NODE_ENV=production`, `DATABASE_URL`,
 `JWT_SECRET` (largo y aleatorio), `JWT_EXPIRES_IN=12h` y `CORS_ORIGIN`.
 
 **El `--include=dev` del build no es opcional.** Con `NODE_ENV=production`, npm
